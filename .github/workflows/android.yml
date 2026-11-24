@@ -105,10 +105,12 @@ jobs:
             exit 1
           fi
           "$APKSIGNER" verify --verbose "$APK_PATH"
-          "$APKSIGNER" verify --print-certs "$APK_PATH" > /tmp/BitChord-apk-signature.txt
-          ACTUAL_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/BitChord-apk-signature.txt | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          "$APKSIGNER" verify --print-certs "$APK_PATH" > /tmp/BitChord-apk-signature.txt 2>&1
+          cat /tmp/BitChord-apk-signature.txt
+          ACTUAL_SHA256="$(sed -nE 's/.*certificate SHA-256 digest: *([[:xdigit:]:]+).*/\1/p' /tmp/BitChord-apk-signature.txt | head -n 1 | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
           keytool -exportcert -keystore bitchord-release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file /tmp/BitChord-release-cert.der >/dev/null
           EXPECTED_SHA256="$(sha256sum /tmp/BitChord-release-cert.der | awk '{print tolower($1)}')"
+          printf 'APK signer SHA-256: %s\nExpected key SHA-256: %s\n' "$ACTUAL_SHA256" "$EXPECTED_SHA256"
           if [ -z "$ACTUAL_SHA256" ] || [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
             echo "Universal APK signer does not match the configured release keystore" >&2
             exit 1
