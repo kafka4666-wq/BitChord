@@ -1,8 +1,12 @@
 package com.music.bitchord
 
 import com.music.bitchord.data.model.HomeShelf
+import com.music.bitchord.data.model.ShelfLayout
+import com.music.bitchord.ui.homeShelfUsesListLayout
 import com.music.bitchord.ui.homeShelvesForDisplay
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeShelfPreferencesTest {
@@ -60,5 +64,22 @@ class HomeShelfPreferencesTest {
                 playlistsAtTop = true,
             ),
         )
+    }
+
+    @Test
+    fun homeRecentsLayoutFollowsTheSavedChoice() {
+        val recents = HomeShelf("Recents", emptyList(), layout = ShelfLayout.CARDS)
+
+        assertTrue(homeShelfUsesListLayout(recents, recentsAsList = true))
+        assertFalse(homeShelfUsesListLayout(recents, recentsAsList = false))
+    }
+
+    @Test
+    fun nonRecentsKeepTheLayoutProvidedByTheFeed() {
+        val listShelf = HomeShelf("Quick picks", emptyList(), layout = ShelfLayout.LIST)
+        val cardShelf = HomeShelf("Charts", emptyList(), layout = ShelfLayout.CARDS)
+
+        assertTrue(homeShelfUsesListLayout(listShelf, recentsAsList = false))
+        assertFalse(homeShelfUsesListLayout(cardShelf, recentsAsList = true))
     }
 }

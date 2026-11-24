@@ -523,6 +523,8 @@ object AppSettings {
 
     /** Home's Recents shelf. */
     val hideRecents = MutableStateFlow(false)
+    /** Show Home's Recents as compact track rows instead of cards. */
+    val homeRecentsListLayout = MutableStateFlow(true)
 
     /** Music videos come off the Home feed, along with any shelf left with nothing else on it. */
     val hideHomeVideos = MutableStateFlow(false)
@@ -1145,6 +1147,7 @@ object AppSettings {
         dontRepeatSuggestions.value = prefs.getBoolean(KEY_DONT_REPEAT_SUGGESTIONS, false)
         preferMusicOnly.value = prefs.getBoolean(KEY_PREFER_MUSIC_ONLY, false)
         hideRecents.value = prefs.getBoolean(KEY_HIDE_RECENTS, false)
+        homeRecentsListLayout.value = prefs.getBoolean(KEY_HOME_RECENTS_LIST_LAYOUT, true)
         hideHomeVideos.value = prefs.getBoolean(KEY_HIDE_HOME_VIDEOS, false)
         hideTopPicks.value = prefs.getBoolean(KEY_HIDE_TOP_PICKS, false)
         hideHomeMoods.value = prefs.getBoolean(KEY_HIDE_HOME_MOODS, false)
@@ -1644,6 +1647,11 @@ object AppSettings {
     fun setHideRecents(value: Boolean) {
         hideRecents.value = value
         prefs.edit().putBoolean(KEY_HIDE_RECENTS, value).apply()
+    }
+
+    fun setHomeRecentsListLayout(value: Boolean) {
+        homeRecentsListLayout.value = value
+        prefs.edit().putBoolean(KEY_HOME_RECENTS_LIST_LAYOUT, value).apply()
     }
 
     fun setHideHomeVideos(value: Boolean) {
@@ -2511,6 +2519,7 @@ object AppSettings {
     private const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
     private const val KEY_PREFER_MUSIC_ONLY = "prefer_music_only"
     private const val KEY_HIDE_RECENTS = "hide_recents"
+    private const val KEY_HOME_RECENTS_LIST_LAYOUT = "home_recents_list_layout"
     private const val KEY_HIDE_HOME_VIDEOS = "hide_home_videos"
     private const val KEY_HIDE_TOP_PICKS = "hide_top_picks"
     private const val KEY_HIDE_HOME_MOODS = "hide_home_moods"
@@ -2598,5 +2607,4 @@ object AppSettings {
     private const val KEY_DISCORD_INFO_DISMISSED = "discord_info_dismissed"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
-
 

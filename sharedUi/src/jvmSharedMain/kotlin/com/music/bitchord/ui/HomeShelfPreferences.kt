@@ -2,13 +2,14 @@ package com.music.bitchord.ui
 
 import com.music.bitchord.data.YtMusicRepository
 import com.music.bitchord.data.model.HomeShelf
+import com.music.bitchord.data.model.ShelfLayout
 import com.music.bitchord.data.model.withoutVideos
 import java.util.Locale
 
 private val TRENDING_HOME_TITLES = setOf("trending", "thịnh hành", "急上昇")
 
 /** Applies listener-selected shelf visibility and ordering without changing the source feed. */
-internal fun homeShelvesForDisplay(
+fun homeShelvesForDisplay(
     shelves: List<HomeShelf>,
     hideRecents: Boolean,
     hideVideos: Boolean,
@@ -38,4 +39,11 @@ internal fun homeShelvesForDisplay(
         }
     }
     return visible
+}
+
+/** The user's Home Recents choice overrides its feed layout; all other shelves keep theirs. */
+internal fun homeShelfUsesListLayout(shelf: HomeShelf, recentsAsList: Boolean): Boolean {
+    val isRecents = shelf.title == YtMusicRepository.RECENT_TITLE ||
+        shelf.title.equals("Recents", ignoreCase = true)
+    return if (isRecents) recentsAsList else shelf.layout == ShelfLayout.LIST
 }

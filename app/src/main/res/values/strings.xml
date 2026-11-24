@@ -294,6 +294,8 @@
     <string name="skip_silence_float_subtitle">Unavailable on 32-bit float output</string>
     <string name="content_preferences">Content Preferences</string>
     <string name="hide_recents">Hide Recents</string>
+    <string name="home_recents_compact">Compact Home Recents</string>
+    <string name="home_recents_compact_subtitle">Show recently played tracks as compact rows instead of cards</string>
     <string name="hide_trending_home">Hide Trending on Home</string>
     <string name="user_playlists_at_top_home">Put your playlists at the top of Home</string>
     <string name="initial_tab">Initial tab</string>

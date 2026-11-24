@@ -304,6 +304,7 @@ fun SettingsScreen(
     val preferMusicOnly by AppSettings.preferMusicOnly.collectAsStateWithLifecycle()
     val squareVideoThumbnails by AppSettings.squareVideoThumbnails.collectAsStateWithLifecycle()
     val hideRecents by AppSettings.hideRecents.collectAsStateWithLifecycle()
+    val homeRecentsListLayout by AppSettings.homeRecentsListLayout.collectAsStateWithLifecycle()
     val hideHomeVideos by AppSettings.hideHomeVideos.collectAsStateWithLifecycle()
     val hideTopPicks by AppSettings.hideTopPicks.collectAsStateWithLifecycle()
     val hideHomeMoods by AppSettings.hideHomeMoods.collectAsStateWithLifecycle()
@@ -1057,6 +1058,21 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setHideRecents(!hideRecents) },
+                )
+            }
+            val compactHomeRecentsTitle = stringResource(R.string.home_recents_compact)
+            row(compactHomeRecentsTitle, "recents", "recently played", "list", "cards", "home") {
+                SettingsRow(
+                    icon = SfIcons.History,
+                    title = compactHomeRecentsTitle,
+                    subtitle = stringResource(R.string.home_recents_compact_subtitle),
+                    trailing = {
+                        IosSwitch(
+                            checked = homeRecentsListLayout,
+                            onCheckedChange = AppSettings::setHomeRecentsListLayout,
+                        )
+                    },
+                    onClick = { AppSettings.setHomeRecentsListLayout(!homeRecentsListLayout) },
                 )
             }
             val hideTrendingTitle = stringResource(R.string.hide_trending_home)

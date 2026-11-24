@@ -880,6 +880,7 @@ private fun BitChordApp(
 
     val homeState by viewModel.home.collectAsStateWithLifecycle()
     val hideRecents by AppSettings.hideRecents.collectAsStateWithLifecycle()
+    val homeRecentsListLayout by AppSettings.homeRecentsListLayout.collectAsStateWithLifecycle()
     val hideHomeVideos by AppSettings.hideHomeVideos.collectAsStateWithLifecycle()
     val hideHomeTrending by AppSettings.hideHomeTrending.collectAsStateWithLifecycle()
     val userPlaylistsAtTopOfHome by AppSettings.userPlaylistsAtTopOfHome.collectAsStateWithLifecycle()
@@ -3606,6 +3607,7 @@ private fun BitChordApp(
                                 onLoadMore = viewModel::loadMoreHome,
                                 loadingMore = homeLoadingMore,
                                 recentlyPlayedLoading = homeRecentlyPlayedLoading && !hideRecents,
+                                homeRecentsListLayout = homeRecentsListLayout,
                                 topPicks = topPicks,
                                 topPicksLoading = topPicksLoading,
                                 listenerName = account?.name,
