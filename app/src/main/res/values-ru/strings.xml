@@ -42,6 +42,7 @@
     <string name="signed_in">Вход выполнен</string>
     <string name="not_signed_in">Вход не выполнен</string>
     <string name="retry">Повторить</string>
+    <string name="retry_all_failed">Повторить все неудачные загрузки</string>
     <string name="shuffle">Перемешать</string>
     <string name="more">Ещё</string>
     <string name="add_to_playlist">Добавить в плейлист</string>

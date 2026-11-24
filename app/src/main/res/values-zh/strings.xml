@@ -39,6 +39,7 @@
     <string name="signed_in">已登录</string>
     <string name="not_signed_in">未登录</string>
     <string name="retry">重试</string>
+    <string name="retry_all_failed">重试所有失败的下载</string>
     <string name="shuffle">随机播放</string>
     <string name="more">更多</string>
     <string name="add_to_playlist">添加到播放列表</string>

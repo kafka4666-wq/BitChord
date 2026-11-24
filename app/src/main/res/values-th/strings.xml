@@ -39,6 +39,7 @@
     <string name="signed_in">ลงชื่อเข้าใช้แล้ว</string>
     <string name="not_signed_in">ยังไม่ได้ลงชื่อเข้าใช้</string>
     <string name="retry">ลองใหม่</string>
+    <string name="retry_all_failed">ลองดาวน์โหลดที่ล้มเหลวทั้งหมดอีกครั้ง</string>
     <string name="shuffle">สุ่มเล่น</string>
     <string name="more">เพิ่มเติม</string>
     <string name="add_to_playlist">เพิ่มลงเพลย์ลิสต์</string>

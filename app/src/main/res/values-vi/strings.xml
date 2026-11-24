@@ -40,6 +40,7 @@
     <string name="signed_in">Đã đăng nhập</string>
     <string name="not_signed_in">Chưa đăng nhập</string>
     <string name="retry">Thử lại</string>
+    <string name="retry_all_failed">Thử lại tất cả lượt tải xuống không thành công</string>
     <string name="shuffle">Trộn bài</string>
     <string name="more">Thêm</string>
     <string name="add_to_playlist">Thêm vào danh sách phát</string>

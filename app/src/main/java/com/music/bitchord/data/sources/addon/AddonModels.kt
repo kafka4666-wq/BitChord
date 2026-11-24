@@ -295,6 +295,8 @@ data class AddonStream(
     @SerialName("encrypted") val encrypted: JsonElement? = null,
     @SerialName("sampleRate") val sampleRate: Double? = null,
     @SerialName("bitDepth") val bitDepth: Double? = null,
+    /** Request headers the CDN requires when opening [url], when any. */
+    @SerialName("headers") val headers: Map<String, String> = emptyMap(),
     /** Bits per second, per the spec's neighbours; normalised in [kbps]. */
     @SerialName("bitrate") val bitrate: Double? = null,
     @SerialName("audioMode") val audioMode: String? = null,

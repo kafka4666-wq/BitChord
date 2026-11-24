@@ -151,7 +151,6 @@ import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.isUnresolvedSpotify
 import com.music.bitchord.data.model.UiState
-import com.music.bitchord.data.model.withoutVideos
 import com.music.bitchord.data.model.UserPlaylist
 import com.music.bitchord.data.model.EntityType
 import com.music.bitchord.data.model.SearchHistoryEntity
@@ -163,6 +162,7 @@ import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.BitPerfectMode
 import com.music.bitchord.ui.AddonBlockedAlert
+import com.music.bitchord.ui.homeShelvesForDisplay
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.ThemeMode
 import com.music.bitchord.ui.components.AccountProfileSelector
@@ -583,7 +583,7 @@ private fun BitChordApp(
     // rather than inside the bar because the page's scroll is what drives it,
     // and the page is a sibling of the bar rather than a child.
     val navBarScroll = rememberFloatingTabBarScrollConnection()
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(AppSettings.initialTab.value.index) }
     // Explore loads the first time it's shown, not at launch beside Home.
     LaunchedEffect(selectedTab) {
         if (selectedTab == TAB_EXPLORE) viewModel.onExploreShown()
@@ -881,16 +881,29 @@ private fun BitChordApp(
     val homeState by viewModel.home.collectAsStateWithLifecycle()
     val hideRecents by AppSettings.hideRecents.collectAsStateWithLifecycle()
     val hideHomeVideos by AppSettings.hideHomeVideos.collectAsStateWithLifecycle()
+    val hideHomeTrending by AppSettings.hideHomeTrending.collectAsStateWithLifecycle()
+    val userPlaylistsAtTopOfHome by AppSettings.userPlaylistsAtTopOfHome.collectAsStateWithLifecycle()
     val hideTopPicks by AppSettings.hideTopPicks.collectAsStateWithLifecycle()
     val hideHomeMoods by AppSettings.hideHomeMoods.collectAsStateWithLifecycle()
     // Only what Home draws: Top Picks reads the unfiltered feed from the view model.
-    val visibleHomeState = remember(homeState, hideHomeVideos, hideRecents) {
+    val visibleHomeState = remember(
+        homeState,
+        hideHomeVideos,
+        hideRecents,
+        hideHomeTrending,
+        userPlaylistsAtTopOfHome,
+    ) {
         val loaded = homeState as? UiState.Success
-        if (loaded != null && (hideHomeVideos || hideRecents)) {
-            var shelves = loaded.data
-            if (hideRecents) shelves = shelves.filterNot { it.title == YtMusicRepository.RECENT_TITLE }
-            if (hideHomeVideos) shelves = shelves.withoutVideos()
-            UiState.Success(shelves)
+        if (loaded != null && (hideHomeVideos || hideRecents || hideHomeTrending || userPlaylistsAtTopOfHome)) {
+            UiState.Success(
+                homeShelvesForDisplay(
+                    shelves = loaded.data,
+                    hideRecents = hideRecents,
+                    hideVideos = hideHomeVideos,
+                    hideTrending = hideHomeTrending,
+                    playlistsAtTop = userPlaylistsAtTopOfHome,
+                ),
+            )
         } else {
             homeState
         }

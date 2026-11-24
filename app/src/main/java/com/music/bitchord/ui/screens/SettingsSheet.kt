@@ -160,6 +160,7 @@ import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.settings.InitialTab
 import com.music.bitchord.data.settings.OutputPcmMode
 import com.music.bitchord.data.settings.BitPerfectMode
 import com.music.bitchord.playback.AudioOutputStatus
@@ -306,6 +307,9 @@ fun SettingsScreen(
     val hideHomeVideos by AppSettings.hideHomeVideos.collectAsStateWithLifecycle()
     val hideTopPicks by AppSettings.hideTopPicks.collectAsStateWithLifecycle()
     val hideHomeMoods by AppSettings.hideHomeMoods.collectAsStateWithLifecycle()
+    val hideHomeTrending by AppSettings.hideHomeTrending.collectAsStateWithLifecycle()
+    val userPlaylistsAtTopOfHome by AppSettings.userPlaylistsAtTopOfHome.collectAsStateWithLifecycle()
+    val initialTab by AppSettings.initialTab.collectAsStateWithLifecycle()
     val smartVersionAlignment by AppSettings.smartVersionAlignment.collectAsStateWithLifecycle()
     val filterNonMusicAudio by AppSettings.filterNonMusicAudio.collectAsStateWithLifecycle()
     val localMusicFolderUri by AppSettings.localMusicFolderUri.collectAsStateWithLifecycle()
@@ -1055,6 +1059,34 @@ fun SettingsScreen(
                     onClick = { AppSettings.setHideRecents(!hideRecents) },
                 )
             }
+            val hideTrendingTitle = stringResource(R.string.hide_trending_home)
+            row(hideTrendingTitle, "trending", "popular", "feed", "home") {
+                SettingsRow(
+                    icon = SfIcons.VisibilityOff,
+                    title = hideTrendingTitle,
+                    trailing = {
+                        IosSwitch(
+                            checked = hideHomeTrending,
+                            onCheckedChange = AppSettings::setHideHomeTrending,
+                        )
+                    },
+                    onClick = { AppSettings.setHideHomeTrending(!hideHomeTrending) },
+                )
+            }
+            val playlistsAtTopTitle = stringResource(R.string.user_playlists_at_top_home)
+            row(playlistsAtTopTitle, "playlists", "playlist", "order", "feed", "home") {
+                SettingsRow(
+                    icon = SfIcons.PlaylistPlay,
+                    title = playlistsAtTopTitle,
+                    trailing = {
+                        IosSwitch(
+                            checked = userPlaylistsAtTopOfHome,
+                            onCheckedChange = AppSettings::setUserPlaylistsAtTopOfHome,
+                        )
+                    },
+                    onClick = { AppSettings.setUserPlaylistsAtTopOfHome(!userPlaylistsAtTopOfHome) },
+                )
+            }
             val hideHomeVideosTitle = stringResource(R.string.hide_home_videos)
             row(hideHomeVideosTitle, "video", "music video", "feed", "home") {
                 SettingsRow(
@@ -1096,6 +1128,23 @@ fun SettingsScreen(
                         )
                     },
                     onClick = { AppSettings.setHideHomeMoods(!hideHomeMoods) },
+                )
+            }
+            val initialTabTitle = stringResource(R.string.initial_tab)
+            row(initialTabTitle, "launch", "startup", "tab", "home", "explore", "radio", "library", "search") {
+                SettingsRow(
+                    icon = SfIcons.PlayCircle,
+                    title = initialTabTitle,
+                    subtitle = stringResource(
+                        when (initialTab) {
+                            InitialTab.HOME -> R.string.home
+                            InitialTab.EXPLORE -> R.string.explore
+                            InitialTab.RADIO -> R.string.radio
+                            InitialTab.LIBRARY -> R.string.library
+                            InitialTab.SEARCH -> R.string.search
+                        },
+                    ),
+                    onClick = { onOpenChoice(SettingsChoiceKind.INITIAL_TAB) },
                 )
             }
             val squareVideoThumbnailsTitle = stringResource(R.string.square_video_thumbnails)
@@ -3090,6 +3139,7 @@ enum class SettingsChoiceKind(@param:StringRes val title: Int) {
     AUTOMIX_PERFORMANCE(R.string.automix_performance),
     BIT_PERFECT(R.string.bit_perfect_output),
     FONT(R.string.font),
+    INITIAL_TAB(R.string.initial_tab),
 }
 
 /** The main page's list of categories: a glyph and a name each, and a chevron into it. */
@@ -3219,6 +3269,29 @@ fun SettingsChoicePage(
                     footer = stringResource(R.string.font_footer),
                 ) { font ->
                     AppSettings.setAppFont(font)
+                    onChosen()
+                }
+            }
+
+            SettingsChoiceKind.INITIAL_TAB -> {
+                val selected by AppSettings.initialTab.collectAsStateWithLifecycle()
+                ChoiceGroup(
+                    options = InitialTab.entries,
+                    selected = selected,
+                    label = {
+                        stringResource(
+                            when (it) {
+                                InitialTab.HOME -> R.string.home
+                                InitialTab.EXPLORE -> R.string.explore
+                                InitialTab.RADIO -> R.string.radio
+                                InitialTab.LIBRARY -> R.string.library
+                                InitialTab.SEARCH -> R.string.search
+                            },
+                        )
+                    },
+                    footer = stringResource(R.string.initial_tab_footer),
+                ) { tab ->
+                    AppSettings.setInitialTab(tab)
                     onChosen()
                 }
             }

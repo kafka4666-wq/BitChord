@@ -971,7 +971,7 @@ object Downloads {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "download failed for $id: ${e.message}", e)
-            fail(id, e.friendly())
+            fail(id, downloadFailureMessage(e))
         }
     }
 
@@ -1524,24 +1524,6 @@ object Downloads {
     }
 
     /**
-     * A failure a user can read. The message on an [error] raised in this
-     * package is already written for them; anything else is a network fault
-     * with a class name for a message.
-     *
-     * [IllegalArgumentException] is in here because of one that wasn't: the
-     * media store throws it for a MIME type it won't accept, and for a while
-     * every download on this device failed that way and reported itself as a
-     * connection problem. The message it carries is not written for a user, but
-     * `Unsupported MIME type audio/webm` at least sends someone looking in the
-     * right direction.
-     */
-    private fun Exception.friendly(): String = when {
-        (this is IllegalStateException || this is IllegalArgumentException) &&
-            !message.isNullOrBlank() -> message!!
-        else -> "Download failed — check your connection"
-    }
-
-    /**
      * How long the source lookup may hold a download up before it goes to
      * YouTube regardless.
      *
@@ -1743,3 +1725,15 @@ data class DownloadedCollection(
     val playlist: Boolean,
     val songs: List<Song>,
 )
+
+/** Keep transfer, preparation, and unrelated failures distinct in the failed row. */
+internal fun downloadFailureMessage(error: Exception): String {
+    val detail = error.message?.trim()?.takeIf { it.isNotEmpty() }
+    return when (error) {
+        is IllegalStateException, is IllegalArgumentException -> detail ?: "Download could not be prepared"
+        is java.io.IOException -> detail?.let { "Download transfer failed: $it" }
+            ?: "Download transfer failed (I/O error)"
+        else -> detail?.let { "Download failed: $it" }
+            ?: "Download failed (${error.javaClass.simpleName})"
+    }
+}

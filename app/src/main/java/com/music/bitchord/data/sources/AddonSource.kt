@@ -429,6 +429,7 @@ class AddonSource(
         return SourceStream(
             url = url,
             format = format,
+            headers = answer.headers,
             durationSec = rows[trackId]?.durationSec,
         )
     }

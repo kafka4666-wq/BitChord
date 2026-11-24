@@ -40,6 +40,7 @@
     <string name="signed_in">साइन इन है</string>
     <string name="not_signed_in">साइन इन नहीं है</string>
     <string name="retry">फिर कोशिश करें</string>
+    <string name="retry_all_failed">सभी विफल डाउनलोड फिर से आज़माएँ</string>
     <string name="shuffle">शफ़ल</string>
     <string name="more">और</string>
     <string name="add_to_playlist">प्लेलिस्ट में जोड़ें</string>

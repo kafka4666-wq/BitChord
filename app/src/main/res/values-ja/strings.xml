@@ -39,6 +39,7 @@
     <string name="signed_in">ログイン済み</string>
     <string name="not_signed_in">未ログイン</string>
     <string name="retry">再試行</string>
+    <string name="retry_all_failed">失敗したダウンロードをすべて再試行</string>
     <string name="shuffle">シャッフル</string>
     <string name="more">その他</string>
     <string name="add_to_playlist">プレイリストに追加</string>

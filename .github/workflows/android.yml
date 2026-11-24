@@ -3,54 +3,100 @@ name: Android Release APK
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-prod-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+          cache: gradle
 
-    - name: Setup Secrets (Keystore & local.properties)
-      run: |
-        echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
-        echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
-        echo "LISTEN_TOGETHER_SERVER=${{ secrets.LISTEN_TOGETHER_SERVER }}" >> local.properties
+      - name: Prepare signing and local properties
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+          LISTEN_TOGETHER_SERVER: ${{ secrets.LISTEN_TOGETHER_SERVER }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            printf 'Missing required GitHub Actions signing secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
 
-        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > bitchord-release.jks
-        {
-          echo "storeFile=bitchord-release.jks"
-          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}"
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
-        } > keystore.properties
+          printf 'LASTFM_API_KEY=%s\n' "$LASTFM_API_KEY" > local.properties
+          printf 'LASTFM_SECRET=%s\n' "$LASTFM_SECRET" >> local.properties
+          printf 'LISTEN_TOGETHER_SERVER=%s\n' "$LISTEN_TOGETHER_SERVER" >> local.properties
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > bitchord-release.jks
+          keytool -list -keystore bitchord-release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          {
+            printf 'storeFile=bitchord-release.jks\n'
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > keystore.properties
 
-    - name: Build Signed Prod Release APK
-      run: ./gradlew assembleProdRelease
+      - name: Build and test signed production APK
+        run: ./gradlew :app:testProdReleaseUnitTest :app:assembleProdRelease
 
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: bitchord-prod-release-signed
-        path: app/build/outputs/apk/prod/release/*.apk
+      - name: Stage universal APK
+        id: stage-apk
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/.*bitchordVersionName.*= "\([^"]*\)".*/\1/p' build.gradle.kts | head -n 1)"
+          if [ -z "$VERSION" ]; then
+            echo "Could not read bitchordVersionName from build.gradle.kts" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match app version v$VERSION" >&2
+            exit 1
+          fi
+          APK="$(find app/build/outputs/apk/prod/release -maxdepth 1 -type f -name '*universal*.apk' -print -quit)"
+          if [ -z "$APK" ]; then
+            echo "Gradle did not produce a universal APK" >&2
+            find app/build/outputs/apk/prod/release -maxdepth 1 -type f -print >&2 || true
+            exit 1
+          fi
+          mkdir -p dist
+          OUTPUT="dist/BitChord-v${VERSION}-universal.apk"
+          cp "$APK" "$OUTPUT"
+          echo "apk_path=$OUTPUT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-    # Built by the same assembleProdRelease, with the same key. The watch app
-    # only pairs with a phone app signed by the same key, so a prod watch APK
-    # for these phone builds can only come from here, never a local build.
-    - name: Upload Wear OS APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: bitchord-wear-prod-release-signed
-        path: wearos/build/outputs/apk/prod/release/*.apk
+      - name: Upload universal APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BitChord-v${{ steps.stage-apk.outputs.version }}-universal
+          path: ${{ steps.stage-apk.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "${{ steps.stage-apk.outputs.apk_path }}" --verify-tag --title "BitChord $GITHUB_REF_NAME" --generate-notes

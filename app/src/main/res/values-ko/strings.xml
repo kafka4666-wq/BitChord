@@ -43,6 +43,7 @@
     <string name="signed_in">로그인함</string>
     <string name="not_signed_in">로그인하지 않음</string>
     <string name="retry">재시도</string>
+    <string name="retry_all_failed">실패한 다운로드 모두 재시도</string>
     <string name="shuffle">셔플</string>
     <string name="more">더보기</string>
     <string name="lyrics_offset">가사 오프셋</string>

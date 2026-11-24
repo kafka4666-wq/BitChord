@@ -40,6 +40,7 @@
     <string name="signed_in">Angemeldet</string>
     <string name="not_signed_in">Nicht angemeldet</string>
     <string name="retry">Erneut versuchen</string>
+    <string name="retry_all_failed">Alle fehlgeschlagenen erneut versuchen</string>
     <string name="shuffle">Zufallswiedergabe</string>
     <string name="more">Mehr</string>
     <string name="add_to_playlist">Zur Playlist hinzufügen</string>

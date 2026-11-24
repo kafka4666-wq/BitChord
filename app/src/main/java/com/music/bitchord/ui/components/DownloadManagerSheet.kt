@@ -235,6 +235,19 @@ fun DownloadManagerPage(
                         },
                         modifier = Modifier.weight(1f),
                     )
+                    if (items.any { it.progress is DownloadProgress.Failed }) {
+                        TextButton(
+                            onClick = {
+                                // Take one fresh snapshot before enqueue changes any
+                                // row: only failures as of this click are retried.
+                                DownloadSession.state.value.items
+                                    .filter { it.progress is DownloadProgress.Failed }
+                                    .forEach { Downloads.enqueue(context, it.song, it.from) }
+                            },
+                        ) {
+                            Text(stringResource(R.string.retry_all_failed))
+                        }
+                    }
                     if (session.busy) {
                         TextButton(
                             onClick = {

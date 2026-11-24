@@ -41,6 +41,7 @@
     <string name="signed_in">Accesso effettuato</string>
     <string name="not_signed_in">Non hai effettuato l\'accesso</string>
     <string name="retry">Riprova</string>
+    <string name="retry_all_failed">Riprova tutti i download non riusciti</string>
     <string name="shuffle">Casuale</string>
     <string name="more">Altro</string>
     <string name="auto_quick_picks">Scelte rapide</string>

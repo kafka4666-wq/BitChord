@@ -131,6 +131,15 @@ enum class ThemeMode(val label: String) {
     SYSTEM("System"), LIGHT("Light"), DARK("Dark")
 }
 
+/** The main destination selected when the app is first opened. */
+enum class InitialTab(val index: Int) {
+    HOME(0),
+    EXPLORE(1),
+    RADIO(2),
+    LIBRARY(3),
+    SEARCH(4),
+}
+
 /**
  * How the app's SF Pro Display is set. [DEFAULT] draws each weight one cut
  * lighter and spaces it to Apple Music's own screens; [LEGACY] is the cut the
@@ -523,6 +532,15 @@ object AppSettings {
 
     /** Home's Find Your Mood shelf. Explore's moods are a page the listener opened, so they stay. */
     val hideHomeMoods = MutableStateFlow(false)
+
+    /** Home's Trending shelf. */
+    val hideHomeTrending = MutableStateFlow(false)
+
+    /** Put the user's Playlists shelf ahead of the other Home feed shelves. */
+    val userPlaylistsAtTopOfHome = MutableStateFlow(false)
+
+    /** Which main tab is selected on a fresh app launch. */
+    val initialTab = MutableStateFlow(InitialTab.HOME)
 
     /** Music videos are square wherever they show — see [com.music.bitchord.ui.components.VideoThumbnails]. */
     val squareVideoThumbnails = MutableStateFlow(false)
@@ -1130,6 +1148,11 @@ object AppSettings {
         hideHomeVideos.value = prefs.getBoolean(KEY_HIDE_HOME_VIDEOS, false)
         hideTopPicks.value = prefs.getBoolean(KEY_HIDE_TOP_PICKS, false)
         hideHomeMoods.value = prefs.getBoolean(KEY_HIDE_HOME_MOODS, false)
+        hideHomeTrending.value = prefs.getBoolean(KEY_HIDE_HOME_TRENDING, false)
+        userPlaylistsAtTopOfHome.value = prefs.getBoolean(KEY_USER_PLAYLISTS_AT_TOP_OF_HOME, false)
+        initialTab.value = runCatching {
+            InitialTab.valueOf(prefs.getString(KEY_INITIAL_TAB, InitialTab.HOME.name) ?: InitialTab.HOME.name)
+        }.getOrDefault(InitialTab.HOME)
         squareVideoThumbnails.value = prefs.getBoolean(KEY_SQUARE_VIDEO_THUMBNAILS, false)
         VideoThumbnails.square = squareVideoThumbnails.value
         smartVersionAlignment.value = prefs.getBoolean(KEY_SMART_VERSION_ALIGNMENT, true)
@@ -1636,6 +1659,21 @@ object AppSettings {
     fun setHideHomeMoods(value: Boolean) {
         hideHomeMoods.value = value
         prefs.edit().putBoolean(KEY_HIDE_HOME_MOODS, value).apply()
+    }
+
+    fun setHideHomeTrending(value: Boolean) {
+        hideHomeTrending.value = value
+        prefs.edit().putBoolean(KEY_HIDE_HOME_TRENDING, value).apply()
+    }
+
+    fun setUserPlaylistsAtTopOfHome(value: Boolean) {
+        userPlaylistsAtTopOfHome.value = value
+        prefs.edit().putBoolean(KEY_USER_PLAYLISTS_AT_TOP_OF_HOME, value).apply()
+    }
+
+    fun setInitialTab(value: InitialTab) {
+        initialTab.value = value
+        prefs.edit().putString(KEY_INITIAL_TAB, value.name).apply()
     }
 
     fun setSquareVideoThumbnails(value: Boolean) {
@@ -2476,6 +2514,9 @@ object AppSettings {
     private const val KEY_HIDE_HOME_VIDEOS = "hide_home_videos"
     private const val KEY_HIDE_TOP_PICKS = "hide_top_picks"
     private const val KEY_HIDE_HOME_MOODS = "hide_home_moods"
+    private const val KEY_HIDE_HOME_TRENDING = "hide_home_trending"
+    private const val KEY_USER_PLAYLISTS_AT_TOP_OF_HOME = "user_playlists_at_top_of_home"
+    private const val KEY_INITIAL_TAB = "initial_tab"
     private const val KEY_SQUARE_VIDEO_THUMBNAILS = "square_video_thumbnails"
     private const val KEY_SMART_VERSION_ALIGNMENT = "smart_version_alignment"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
@@ -2557,6 +2598,5 @@ object AppSettings {
     private const val KEY_DISCORD_INFO_DISMISSED = "discord_info_dismissed"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
-
 
 

@@ -42,6 +42,7 @@
     <string name="signed_in">מחובר</string>
     <string name="not_signed_in">לא מחובר</string>
     <string name="retry">ניסיון חוזר</string>
+    <string name="retry_all_failed">ניסיון חוזר של כל ההורדות שנכשלו</string>
     <string name="shuffle">ערבוב</string>
     <string name="more">עוד</string>
     <string name="add_to_playlist">הוספה לפלייליסט</string>

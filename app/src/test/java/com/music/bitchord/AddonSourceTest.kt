@@ -948,6 +948,25 @@ class AddonSourceTest {
     // ── Stream ────────────────────────────────────────────────────────────
 
     @Test
+    fun `stream response headers are retained with the source URL`() = runBlocking {
+        route("/manifest.json", manifest())
+        route(
+            "/stream/t1",
+            json(
+                """{"url":"https://cdn.example.com/a.flac","codec":"flac",
+                   "headers":{"Referer":"https://catalog.example/","X-Stream-Key":"abc"}}""",
+            ),
+        )
+
+        val stream = AddonSource(config()).stream("t1", StreamRequest.Lossless)!!
+
+        assertEquals(
+            mapOf("Referer" to "https://catalog.example/", "X-Stream-Key" to "abc"),
+            stream.headers,
+        )
+    }
+
+    @Test
     fun `the routing fields become the format the player is told about`() = runBlocking {
         route("/manifest.json", manifest())
         route(

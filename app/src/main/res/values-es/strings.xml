@@ -41,6 +41,7 @@
     <string name="signed_in">Sesión iniciada</string>
     <string name="not_signed_in">Sesión no iniciada</string>
     <string name="retry">Reintentar</string>
+    <string name="retry_all_failed">Reintentar todas las descargas fallidas</string>
     <string name="shuffle">Aleatorio</string>
     <string name="more">Más</string>
     <string name="add_to_playlist">Añadir a la lista</string>
