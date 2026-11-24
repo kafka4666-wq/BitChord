@@ -1537,4 +1537,10 @@
     <string name="drive_backup_row_subtitle">在你的所有裝置間備份並同步 Replay</string>
     <string name="drive_over_cellular">使用行動數據同步</string>
     <string name="drive_over_cellular_subtitle">關閉時，自動同步會等待 Wi-Fi</string>
+    <string name="home_recents_compact">首頁精簡顯示最近播放</string>
+    <string name="home_recents_compact_subtitle">將最近播放的曲目以精簡列而非卡片顯示</string>
+    <string name="hide_trending_home">在首頁隱藏熱門內容</string>
+    <string name="user_playlists_at_top_home">將你的播放清單放在首頁頂端</string>
+    <string name="initial_tab">初始分頁</string>
+    <string name="initial_tab_footer">選擇啟動 BitChord 時開啟的主要分頁。啟動後仍可正常切換分頁。</string>
 </resources>

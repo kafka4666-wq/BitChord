@@ -1477,4 +1477,10 @@
     <string name="drive_backup_row_subtitle">Sao lưu và đồng bộ Replay trên mọi thiết bị</string>
     <string name="drive_over_cellular">Đồng bộ qua dữ liệu di động</string>
     <string name="drive_over_cellular_subtitle">Khi tắt, đồng bộ tự động sẽ chờ Wi-Fi</string>
+    <string name="home_recents_compact">Hiển thị mục nghe gần đây dạng gọn trên Trang chủ</string>
+    <string name="home_recents_compact_subtitle">Hiển thị các bản nhạc vừa nghe dưới dạng hàng gọn thay vì thẻ</string>
+    <string name="hide_trending_home">Ẩn Xu hướng trên Trang chủ</string>
+    <string name="user_playlists_at_top_home">Đưa danh sách phát của bạn lên đầu Trang chủ</string>
+    <string name="initial_tab">Tab mở đầu</string>
+    <string name="initial_tab_footer">Chọn tab chính sẽ mở khi BitChord khởi chạy. Sau khi khởi chạy, bạn vẫn có thể chuyển tab như bình thường.</string>
 </resources>

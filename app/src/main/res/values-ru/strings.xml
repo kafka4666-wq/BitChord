@@ -1595,4 +1595,10 @@
     <string name="drive_backup_row_subtitle">Копирование и синхронизация Replay между устройствами</string>
     <string name="drive_over_cellular">Синхронизировать по мобильной сети</string>
     <string name="drive_over_cellular_subtitle">Если выключено, автосинхронизация ждёт Wi-Fi</string>
+    <string name="home_recents_compact">Компактный список недавних на главной</string>
+    <string name="home_recents_compact_subtitle">Показывать недавно прослушанные треки компактными строками вместо карточек</string>
+    <string name="hide_trending_home">Скрыть популярное на главной</string>
+    <string name="user_playlists_at_top_home">Разместить ваши плейлисты вверху главной</string>
+    <string name="initial_tab">Начальная вкладка</string>
+    <string name="initial_tab_footer">Выберите, какая основная вкладка будет открываться при запуске BitChord. После запуска вкладки можно переключать как обычно.</string>
 </resources>

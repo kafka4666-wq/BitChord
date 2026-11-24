@@ -1566,4 +1566,10 @@
     <string name="drive_backup_row_subtitle">גיבוי וסנכרון של Replay בין המכשירים שלך</string>
     <string name="drive_over_cellular">סנכרון בחבילת גלישה</string>
     <string name="drive_over_cellular_subtitle">כשכבוי, סנכרונים אוטומטיים ממתינים ל-Wi-Fi</string>
+    <string name="home_recents_compact">השמעות אחרונות קומפקטיות במסך הבית</string>
+    <string name="home_recents_compact_subtitle">הצגת רצועות שהושמעו לאחרונה בשורות קומפקטיות במקום בכרטיסים</string>
+    <string name="hide_trending_home">הסתרת מגמות במסך הבית</string>
+    <string name="user_playlists_at_top_home">הצגת הפלייליסטים שלך בראש מסך הבית</string>
+    <string name="initial_tab">הכרטיסייה הראשונית</string>
+    <string name="initial_tab_footer">בחרו איזו כרטיסייה ראשית תיפתח עם הפעלת BitChord. לאחר ההפעלה תוכלו לעבור בין כרטיסיות כרגיל.</string>
 </resources>

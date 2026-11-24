@@ -1561,4 +1561,10 @@
     <string name="drive_backup_row_subtitle">Replay auf all deinen Geräten sichern und synchronisieren</string>
     <string name="drive_over_cellular">Über mobile Daten synchronisieren</string>
     <string name="drive_over_cellular_subtitle">Wenn aus, warten automatische Synchronisierungen auf WLAN</string>
+    <string name="home_recents_compact">Zuletzt Gespieltes auf der Startseite kompakt anzeigen</string>
+    <string name="home_recents_compact_subtitle">Zuletzt gehörte Titel als kompakte Zeilen statt als Karten anzeigen</string>
+    <string name="hide_trending_home">Trends auf der Startseite ausblenden</string>
+    <string name="user_playlists_at_top_home">Deine Playlists oben auf der Startseite anzeigen</string>
+    <string name="initial_tab">Startregisterkarte</string>
+    <string name="initial_tab_footer">Wähle, welcher Haupttab beim Start von BitChord geöffnet wird. Danach kannst du wie gewohnt zwischen den Tabs wechseln.</string>
 </resources>

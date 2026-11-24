@@ -1338,17 +1338,13 @@ class SourcesTest {
         assertTrue("the slow source was left running", slow.cancelled)
     }
 
-    /**
-     * Answers that arrive together are still ranked. Racing gives up ordering
-     * between a fast source and a slow one; it does not give up ordering
-     * between two that answered at the same moment.
-     */
+    /** The patient ranking pass chooses the better stream regardless of scheduler order. */
     @Test
-    fun `prefers the better of two answers that arrive together`() = runBlocking {
+    fun `patient race prefers the better answer regardless of response order`() = runBlocking {
         val worse = FakeSource("Ricky's Addon", answerAfterMs = 5, format = StreamFormat("mp3", kbps = 128))
         val better = FakeSource("JioSaavn", answerAfterMs = 5, format = StreamFormat("mp4", kbps = 320))
         val (source, stream) = SourceResolver.bestAcross(
-            listOf(worse, better), raceTarget(), StreamRequest.Lossless,
+            listOf(worse, better), raceTarget(), StreamRequest.Lossless, waitForAll = true,
         )!!
         assertEquals("JioSaavn", source.displayName)
         assertEquals(320, stream.format.kbps)

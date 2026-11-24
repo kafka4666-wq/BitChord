@@ -1561,4 +1561,10 @@
     <string name="drive_backup_row_subtitle">अपने सभी डिवाइस पर Replay का बैकअप और सिंक करें</string>
     <string name="drive_over_cellular">मोबाइल डेटा पर सिंक करें</string>
     <string name="drive_over_cellular_subtitle">बंद होने पर, ऑटो सिंक Wi-Fi का इंतज़ार करते हैं</string>
+    <string name="home_recents_compact">होम पर हाल ही में चलाए गए गाने संक्षिप्त रूप में दिखाएँ</string>
+    <string name="home_recents_compact_subtitle">हाल ही में चलाए गए ट्रैक कार्ड के बजाय कॉम्पैक्ट पंक्तियों में दिखाएँ</string>
+    <string name="hide_trending_home">होम पर ट्रेंडिंग छिपाएँ</string>
+    <string name="user_playlists_at_top_home">अपनी प्लेलिस्ट होम के सबसे ऊपर रखें</string>
+    <string name="initial_tab">शुरुआती टैब</string>
+    <string name="initial_tab_footer">चुनें कि BitChord शुरू होने पर कौन-सा मुख्य टैब खुले। शुरू होने के बाद आप सामान्य रूप से टैब बदल सकते हैं।</string>
 </resources>

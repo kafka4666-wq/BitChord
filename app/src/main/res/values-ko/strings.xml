@@ -1410,4 +1410,10 @@
     <string name="drive_backup_row_subtitle">모든 기기에서 Replay 백업 및 동기화</string>
     <string name="drive_over_cellular">모바일 데이터로 동기화</string>
     <string name="drive_over_cellular_subtitle">끄면 자동 동기화가 Wi-Fi를 기다립니다</string>
+    <string name="home_recents_compact">홈에서 최근 재생 항목을 간결하게 표시</string>
+    <string name="home_recents_compact_subtitle">최근 재생한 트랙을 카드 대신 간결한 행으로 표시</string>
+    <string name="hide_trending_home">홈에서 인기 항목 숨기기</string>
+    <string name="user_playlists_at_top_home">내 재생목록을 홈 맨 위에 표시</string>
+    <string name="initial_tab">초기 탭</string>
+    <string name="initial_tab_footer">BitChord를 실행할 때 열릴 기본 탭을 선택하세요. 실행 후에는 평소처럼 탭을 전환할 수 있습니다.</string>
 </resources>

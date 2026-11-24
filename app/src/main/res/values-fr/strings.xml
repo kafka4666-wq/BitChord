@@ -1562,4 +1562,10 @@
     <string name="drive_backup_row_subtitle">Sauvegarder et synchroniser Replay entre vos appareils</string>
     <string name="drive_over_cellular">Synchroniser via les données mobiles</string>
     <string name="drive_over_cellular_subtitle">Désactivé, les synchronisations automatiques attendent le Wi-Fi</string>
+    <string name="home_recents_compact">Écoutes récentes compactes sur l’accueil</string>
+    <string name="home_recents_compact_subtitle">Afficher les morceaux récemment écoutés en lignes compactes plutôt qu’en cartes</string>
+    <string name="hide_trending_home">Masquer les tendances sur Accueil</string>
+    <string name="user_playlists_at_top_home">Placer vos playlists en haut de l’Accueil</string>
+    <string name="initial_tab">Onglet initial</string>
+    <string name="initial_tab_footer">Choisissez l’onglet principal qui s’ouvre au lancement de BitChord. Vous pourrez ensuite changer d’onglet normalement.</string>
 </resources>

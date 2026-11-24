@@ -1603,4 +1603,10 @@
     <string name="drive_backup_row_subtitle">Kopia i synchronizacja Replay na wszystkich urządzeniach</string>
     <string name="drive_over_cellular">Synchronizuj przez dane komórkowe</string>
     <string name="drive_over_cellular_subtitle">Gdy wyłączone, automatyczne synchronizacje czekają na Wi-Fi</string>
+    <string name="home_recents_compact">Kompaktowe ostatnio odtwarzane na stronie głównej</string>
+    <string name="home_recents_compact_subtitle">Pokazuj ostatnio odtwarzane utwory w kompaktowych wierszach zamiast kart</string>
+    <string name="hide_trending_home">Ukryj Na czasie na stronie głównej</string>
+    <string name="user_playlists_at_top_home">Umieść swoje playlisty u góry strony głównej</string>
+    <string name="initial_tab">Początkowa karta</string>
+    <string name="initial_tab_footer">Wybierz, która główna karta otworzy się po uruchomieniu BitChord. Po uruchomieniu możesz normalnie przełączać karty.</string>
 </resources>

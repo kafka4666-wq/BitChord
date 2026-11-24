@@ -1543,4 +1543,10 @@
     <string name="drive_backup_row_subtitle">สำรองและซิงค์ Replay ในทุกอุปกรณ์ของคุณ</string>
     <string name="drive_over_cellular">ซิงค์ผ่านอินเทอร์เน็ตมือถือ</string>
     <string name="drive_over_cellular_subtitle">เมื่อปิด การซิงค์อัตโนมัติจะรอ Wi-Fi</string>
+    <string name="home_recents_compact">แสดงรายการที่เล่นล่าสุดบนหน้าหลักแบบกะทัดรัด</string>
+    <string name="home_recents_compact_subtitle">แสดงเพลงที่เล่นล่าสุดเป็นแถวขนาดกะทัดรัดแทนการ์ด</string>
+    <string name="hide_trending_home">ซ่อนเพลงยอดนิยมบนหน้าหลัก</string>
+    <string name="user_playlists_at_top_home">วางเพลย์ลิสต์ของคุณไว้ด้านบนสุดของหน้าหลัก</string>
+    <string name="initial_tab">แท็บเริ่มต้น</string>
+    <string name="initial_tab_footer">เลือกแท็บหลักที่จะเปิดเมื่อเริ่ม BitChord หลังจากเปิดแอปแล้ว คุณยังสลับแท็บได้ตามปกติ</string>
 </resources>
