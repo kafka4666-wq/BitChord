@@ -82,7 +82,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.music.bitchord"
+        // Distinct identity lets this fork install beside the original BitChord app.
+        applicationId = "com.music.bitchord.fork"
         // 26 keeps reach wide; real-time blur (RenderEffect) kicks in on API 31+,
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
