@@ -95,7 +95,9 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import com.music.bitchord.data.sources.AddonSource
 import com.music.bitchord.data.sources.SourceKind
@@ -644,6 +646,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         clearDetails = ::clearDetail,
     )
 
+    /** Recently closed YouTube playlists, retained so back/reopen does not page from 100 again. */
+    private val playlistPageCache = linkedMapOf<String, DetailPage>()
+    private val playlistPageCacheTimes = mutableMapOf<String, Long>()
+    private val refreshingPlaylistPages = mutableSetOf<String>()
+    private val playlistRemovalMutexes = mutableMapOf<String, Mutex>()
+
     /** UI-side continuation fetches that can be handed to the playback service. */
     private val fillInJobs = mutableMapOf<String, Job>()
 
@@ -1007,6 +1015,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _detailStack.value = _detailStack.value.map {
             if (it.browseId == playlist.browseId) it.copy(title = title) else it
         }
+        cachedPlaylistPage(playlist.browseId)?.let { rememberPlaylistPage(it.copy(title = title)) }
     }
 
     /**
@@ -1058,9 +1067,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var failedCount = 0
             val uniqueSongs = songs.distinctBy { it.videoId }
             playlists.forEach { playlist ->
-                val openSongs = (_detailStack.value.firstOrNull { it.browseId == playlist.browseId }
-                    ?.songs as? UiState.Success)?.data
-                val known = openSongs ?: YtMusicRepository.allSongs(playlist.browseId).getOrNull()
+                val known = knownPlaylistSongs(playlist.browseId)
+                    ?: YtMusicRepository.allSongs(playlist.browseId).getOrNull()
                 val knownIds = known?.mapTo(HashSet()) { it.videoId }
                 val missing = uniqueSongs.filterNot { it.videoId in knownIds.orEmpty() }
                 alreadyThereCount += uniqueSongs.size - missing.size
@@ -1084,9 +1092,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private enum class AddOutcome { ADDED, ALREADY_THERE, FAILED }
 
     private suspend fun addOne(playlist: UserPlaylist, song: Song): AddOutcome {
-        val openSongs = (_detailStack.value.firstOrNull { it.browseId == playlist.browseId }
-            ?.songs as? UiState.Success)?.data
-        val known = openSongs
+        val known = knownPlaylistSongs(playlist.browseId)
             ?: YtMusicRepository.allSongs(playlist.browseId).getOrNull()
         if (known?.any { it.videoId == song.videoId } == true) return AddOutcome.ALREADY_THERE
         return YtMusicRepository.addToPlaylist(playlist.playlistId, listOf(song.videoId)).fold(
@@ -1277,36 +1283,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * Drops [song] from the playlist page it is being read on, and takes the
-     * row out from under the reader rather than waiting for a re-fetch.
-     */
+    /** Serializes optimistic removals per playlist and restores a row if YouTube rejects the edit. */
     fun removeFromPlaylist(browseId: String, song: Song) {
         val setVideoId = song.setVideoId ?: return
         if (!requireSignIn()) return
         val playlistId = browseId.removePrefix("VL")
+        val removalMutex = playlistRemovalMutexes.getOrPut(browseId) { Mutex() }
         viewModelScope.launch {
-            YtMusicRepository.removeFromPlaylist(
-                playlistId,
-                listOf(setVideoId to song.videoId),
-            ).fold(
-                onSuccess = {
+            removalMutex.withLock {
+                val removedPositions = _detailStack.value.mapIndexedNotNull { index, page ->
+                    if (page.browseId != browseId) return@mapIndexedNotNull null
+                    val songs = (page.songs as? UiState.Success)?.data ?: return@mapIndexedNotNull null
+                    val position = songs.indexOfFirst { it.setVideoId == setVideoId }
+                    if (position < 0) null else index to position
+                }.toMap()
+                fun withoutEntry(page: DetailPage): DetailPage {
+                    val songs = (page.songs as? UiState.Success)?.data ?: return page
+                    val remaining = songs.filterNot { it.setVideoId == setVideoId }
+                    return if (remaining.size == songs.size) page else page.copy(songs = UiState.Success(remaining))
+                }
+                _detailStack.value = _detailStack.value.map { page ->
+                    if (page.browseId == browseId) withoutEntry(page) else page
+                }
+                cachedPlaylistPage(browseId)?.let { rememberPlaylistPage(withoutEntry(it)) }
+                val result = YtMusicRepository.removeFromPlaylist(
+                    playlistId,
+                    listOf(setVideoId to song.videoId),
+                )
+                if (result.isSuccess) {
                     libraryStale = true
-                    _detailStack.value = _detailStack.value.map { page ->
-                        val songs = (page.songs as? UiState.Success)?.data
-                        if (page.browseId != browseId || songs == null) {
-                            page
-                        } else {
-                            page.copy(
-                                songs = UiState.Success(
-                                    songs.filterNot { it.setVideoId == setVideoId },
-                                ),
-                            )
-                        }
+                } else {
+                    _detailStack.value = _detailStack.value.mapIndexed { index, page ->
+                        if (page.browseId != browseId) return@mapIndexed page
+                        val songs = (page.songs as? UiState.Success)?.data ?: return@mapIndexed page
+                        if (songs.any { it.setVideoId == setVideoId }) return@mapIndexed page
+                        val position = (removedPositions[index] ?: songs.size).coerceIn(0, songs.size)
+                        page.copy(songs = UiState.Success(songs.toMutableList().also { it.add(position, song) }))
                     }
-                },
-                onFailure = {},
-            )
+                    playlistPageCache.remove(browseId)
+                    playlistPageCacheTimes.remove(browseId)
+                }
+            }
         }
     }
 
@@ -1343,6 +1360,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                     .filterNot { it.videoId == song.videoId },
                             )
                         }
+                    }
+                    cachedPlaylistPage(browseId)?.let { cached ->
+                        rememberPlaylistPage(
+                            cached.copy(suggestedSongs = cached.suggestedSongs.filterNot { it.videoId == song.videoId }),
+                        )
                     }
                     appendToOpenPlaylist(browseId, song, added[song.videoId])
                 },
@@ -1384,6 +1406,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ),
                 ),
             )
+        }
+        cachedPlaylistPage(browseId)?.let { cached ->
+            val songs = (cached.songs as? UiState.Success)?.data ?: return@let
+            if (songs.none { it.videoId == song.videoId }) {
+                rememberPlaylistPage(
+                    cached.copy(
+                        songs = UiState.Success(
+                            songs + added.copy(thumbnailUrl = added.thumbnailUrl ?: cached.thumbnailUrl),
+                        ),
+                    ),
+                )
+            }
         }
     }
 
@@ -1447,6 +1481,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             page.copy(songs = UiState.Success(reordered.withArtwork(page.thumbnailUrl)))
                         }
                     }
+                    cachedPlaylistPage(playlist.browseId)?.let { page ->
+                        if (page.songs is UiState.Success) {
+                            rememberPlaylistPage(page.copy(songs = UiState.Success(reordered.withArtwork(page.thumbnailUrl))))
+                        }
+                    }
                     onResult(true)
                 },
                 onFailure = { onResult(false) },
@@ -1472,6 +1511,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // nothing left to show.
                     _detailStack.value = _detailStack.value
                         .filterNot { it.browseId == playlist.browseId }
+                    playlistPageCache.remove(playlist.browseId)
+                    playlistPageCacheTimes.remove(playlist.browseId)
                     navigator.onDetailStackShrunk(_detailStack.value.size)
                     libraryStale = true
                 },
@@ -1848,7 +1889,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Tapping a tab should leave any pushed page behind. */
     fun clearDetail() {
-        if (_detailStack.value.isNotEmpty()) _detailStack.value = emptyList()
+        val stack = _detailStack.value
+        stack.forEach { rememberPlaylistPage(it, markFresh = false) }
+        if (stack.isNotEmpty()) _detailStack.value = emptyList()
         navigator.onDetailStackShrunk(0)
     }
 
@@ -2741,6 +2784,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         /** Today's Top Picks row, kept so the next launch paints it before any request. */
         private const val TOP_PICKS_FILE = "top_picks_v4.json"
 
+        /** Reopened playlist snapshots older than this are refreshed without blocking the cached page. */
+        private const val PLAYLIST_PAGE_CACHE_TTL_MS = 60_000L
+
         /** Per-addon budget for the Addons search tab; a slow addon is left out, not waited on. */
         private const val ADDON_SEARCH_TIMEOUT_MS = 12_000L
         private const val ADDON_SEARCH_LIMIT = 20
@@ -2865,6 +2911,67 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun rememberPlaylistPage(page: DetailPage, markFresh: Boolean = true) {
+        if (!page.browseId.startsWith("VL") || page.songs !is UiState.Success) return
+        val previousTime = playlistPageCacheTimes[page.browseId]
+        playlistPageCache.remove(page.browseId)
+        playlistPageCache[page.browseId] = page
+        playlistPageCacheTimes[page.browseId] =
+            if (markFresh) System.currentTimeMillis() else previousTime ?: System.currentTimeMillis()
+        while (playlistPageCache.size > 8) {
+            val evicted = playlistPageCache.keys.first()
+            playlistPageCache.remove(evicted)
+            playlistPageCacheTimes.remove(evicted)
+        }
+    }
+
+    private fun cachedPlaylistPage(browseId: String): DetailPage? =
+        playlistPageCache.remove(browseId)?.also { playlistPageCache[browseId] = it }
+
+    /** Refreshes a stale, fully loaded snapshot without delaying its immediate display. */
+    private fun refreshCachedPlaylistIfStale(browseId: String, snapshot: DetailPage) {
+        val cachedAt = playlistPageCacheTimes[browseId] ?: return
+        if (System.currentTimeMillis() - cachedAt < PLAYLIST_PAGE_CACHE_TTL_MS) return
+        if (snapshot.continuation != null || !refreshingPlaylistPages.add(browseId)) return
+        val cachedSongs = (snapshot.songs as? UiState.Success)?.data ?: run {
+            refreshingPlaylistPages.remove(browseId)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val latest = YtMusicRepository.allSongsSnapshot(browseId).getOrNull()
+                    ?.takeIf { it.complete }?.songs ?: return@launch
+                // A local song edit or reorder may have happened while the request was
+                // in flight. Preserve those newer rows, while keeping title-only changes.
+                val currentCached = playlistPageCache[browseId] ?: return@launch
+                if ((currentCached.songs as? UiState.Success)?.data != cachedSongs) return@launch
+                rememberPlaylistPage(currentCached.copy(songs = UiState.Success(latest), continuation = null))
+                _detailStack.value = _detailStack.value.map { page ->
+                    if (page.browseId == browseId &&
+                        (page.songs as? UiState.Success)?.data == cachedSongs
+                    ) {
+                        page.copy(songs = UiState.Success(latest), continuation = null)
+                    } else {
+                        page
+                    }
+                }
+            } finally {
+                refreshingPlaylistPages.remove(browseId)
+            }
+        }
+    }
+
+    /** Uses an open or recently closed page before doing a full playlist fetch. */
+    private fun knownPlaylistSongs(browseId: String): List<Song>? {
+        val openPage = _detailStack.value.lastOrNull { it.browseId == browseId }
+        if (openPage?.continuation == null) {
+            (openPage?.songs as? UiState.Success)?.let { return it.data }
+        }
+        val cached = cachedPlaylistPage(browseId) ?: return null
+        if (cached.continuation != null) return null
+        return (cached.songs as? UiState.Success)?.data
+    }
+
     fun openDetail(
         browseId: String,
         title: String,
@@ -2886,6 +2993,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val resolved = browseTypeOf(browseId, type)
+        val cached = if (browseId.startsWith("VL")) cachedPlaylistPage(browseId) else null
+        if (cached != null) {
+            val restored = cached.copy(
+                title = title.ifBlank { cached.title },
+                subtitle = subtitle.ifBlank { cached.subtitle },
+                thumbnailUrl = thumbnailUrl ?: cached.thumbnailUrl,
+                type = resolved,
+            )
+            _detailStack.value += restored
+            refreshCachedPlaylistIfStale(browseId, cached)
+            restored.continuation?.let { fillIn(browseId, it, restored.thumbnailUrl) }
+            return
+        }
         _detailStack.value += DetailPage(
             browseId = browseId,
             title = title,
@@ -3449,6 +3569,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun closeDetail(): Boolean {
         val stack = _detailStack.value
         if (stack.isEmpty()) return false
+        rememberPlaylistPage(stack.last(), markFresh = false)
         _detailStack.value = stack.dropLast(1)
         navigator.onDetailStackShrunk(_detailStack.value.size)
         return true

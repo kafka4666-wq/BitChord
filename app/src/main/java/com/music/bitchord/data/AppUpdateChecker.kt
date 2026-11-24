@@ -77,7 +77,9 @@ object AppUpdateChecker {
             val apkUrl = apkAssetUrl(release)
             val notes = release["body"]?.jsonPrimitive?.contentOrNull
             val latest = tag.removePrefix("v")
-            if (isNewer(latest, BuildConfig.VERSION_NAME)) {
+            val releaseName = release["name"]?.jsonPrimitive?.contentOrNull
+            val releaseCode = releaseVersionCode(releaseName)
+            if (shouldOfferUpdate(latest, releaseCode, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)) {
                 _available.value = UpdateInfo(latest, url, apkUrl, notes)
             }
         }
@@ -228,6 +230,24 @@ object AppUpdateChecker {
 
     /** A version split into its numeric dotted parts and whether it carries a "-suffix" (e.g. "-beta2"). */
     private data class ParsedVersion(val parts: List<Int>, val isPreRelease: Boolean)
+
+    private val releaseVersionCodePattern = Regex("""Android versionCode\s+(\d+)""", RegexOption.IGNORE_CASE)
+
+    internal fun releaseVersionCode(title: String?): Int? = title
+        ?.let { releaseVersionCodePattern.find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
+
+    /** Prefer Android's install-time monotonic code when a release carries it. */
+    internal fun shouldOfferUpdate(
+        latestVersion: String,
+        latestVersionCode: Int?,
+        currentVersion: String,
+        currentVersionCode: Int,
+    ): Boolean = when {
+        latestVersionCode == null -> isNewer(latestVersion, currentVersion)
+        latestVersionCode > currentVersionCode -> true
+        latestVersionCode < currentVersionCode -> false
+        else -> currentVersion.contains('-') && isNewer(latestVersion, currentVersion)
+    }
 
     private fun parseVersion(raw: String): ParsedVersion {
         val dash = raw.indexOf('-')

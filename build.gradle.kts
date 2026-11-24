@@ -41,8 +41,10 @@ buildscript {
  * No "v" in the name — the in-app updater reads it as a number; the "v" is the
  * release tag's alone.
  */
-extra["bitchordVersionCode"] = 46
-extra["bitchordVersionName"] = "1.14"
+extra["bitchordVersionCode"] = 47
+extra["bitchordVersionName"] = "1.11"
+// Release tags stay monotonic even when the displayed app version is intentionally reset.
+extra["bitchordReleaseVersion"] = "1.15"
 
 /*
  * Bump this by hand before cutting each sideloaded test build ("beta2",

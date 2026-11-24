@@ -1,0 +1,122 @@
+name: Sync upstream BitChord
+
+on:
+  schedule:
+    - cron: '13 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the fork's main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure merge identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream main
+        run: |
+          git remote add upstream https://github.com/kushagrasinghx/BitChord.git
+          git fetch --no-tags upstream main
+
+      - name: Merge upstream when safe
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Fork already contains upstream/main."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="$(git merge-base HEAD upstream/main)"
+          workflow_changes="$(git diff --name-only "$base" upstream/main -- .github/workflows)"
+          if [[ -n "$workflow_changes" ]]; then
+            {
+              echo "## Upstream synchronization stopped: workflow review required"
+              echo
+              echo "Upstream changed GitHub Actions workflows; review these files manually before syncing and exposing fork secrets to them:"
+              echo '```'
+              echo "$workflow_changes"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Upstream workflow changes require manual review:" >&2
+            echo "$workflow_changes" >&2
+            exit 1
+          fi
+
+          if ! git merge --no-ff --no-edit upstream/main; then
+            conflicts="$(git diff --name-only --diff-filter=U || true)"
+            {
+              echo "## Upstream synchronization stopped: merge conflicts"
+              echo
+              echo "No changes were pushed. Resolve these paths manually, then rerun the workflow:"
+              echo '```'
+              echo "${conflicts:-unlisted conflict}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Merge conflict; no changes were pushed:" >&2
+            echo "${conflicts:-unlisted conflict}" >&2
+            git merge --abort || true
+            exit 1
+          fi
+
+          if ! grep -Fq 'applicationId = "com.music.bitchord.fork"' app/build.gradle.kts; then
+            echo "Fork package id changed after merge; refusing to push." >&2
+            exit 1
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        if: steps.merge.outputs.changed == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        if: steps.merge.outputs.changed == 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Android tests and development build
+        if: steps.merge.outputs.changed == 'true'
+        run: |
+          chmod +x gradlew
+          ./gradlew testDevDebugUnitTest assembleDevDebug
+
+      - name: Set up Go
+        if: steps.merge.outputs.changed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run backend tests
+        if: steps.merge.outputs.changed == 'true'
+        working-directory: backend
+        run: go test ./...
+
+      - name: Push tested merge to the fork
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh auth setup-git
+          git push origin HEAD:main

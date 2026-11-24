@@ -3,8 +3,15 @@ package com.music.bitchord.data.spotify
 import android.content.Context
 import android.content.SharedPreferences
 import com.music.bitchord.data.model.Song
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -21,13 +28,21 @@ object LocalPlaylistStore {
     private const val KEY_PLAYLISTS = "playlists_json"
 
     private lateinit var prefs: SharedPreferences
+    private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var persistenceStarted = false
 
     private val _playlists = MutableStateFlow<List<LocalPlaylist>>(emptyList())
     val playlists = _playlists.asStateFlow()
 
     fun init(context: Context) {
-        prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        prefs = context.applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         load()
+        if (persistenceStarted) return
+        persistenceStarted = true
+        val loaded = _playlists.value
+        io.launch {
+            _playlists.filter { it !== loaded }.conflate().collect { persist(it) }
+        }
     }
 
     private fun load() {
@@ -68,14 +83,12 @@ object LocalPlaylistStore {
         val playlist = LocalPlaylist(id = id, title = title, songs = songs)
         val updated = listOf(playlist) + _playlists.value.filterNot { it.id == id }
         _playlists.value = updated
-        persist(updated)
         return playlist
     }
 
     fun deletePlaylist(id: String) {
         val updated = _playlists.value.filterNot { it.id == id || it.browseId == id || it.id == id.removePrefix("local:playlist:") }
         _playlists.value = updated
-        persist(updated)
     }
 
     fun renamePlaylist(id: String, newTitle: String) {
@@ -86,7 +99,6 @@ object LocalPlaylistStore {
             } else it
         }
         _playlists.value = updated
-        persist(updated)
     }
 
     /**
@@ -101,7 +113,6 @@ object LocalPlaylistStore {
             if (index < 0) playlist else playlist.copy(songs = playlist.songs.filterIndexed { i, _ -> i != index })
         }
         _playlists.value = updated
-        persist(updated)
     }
 
     fun getPlaylist(id: String): LocalPlaylist? {

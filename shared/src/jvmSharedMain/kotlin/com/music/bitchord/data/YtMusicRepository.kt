@@ -586,7 +586,7 @@ object YtMusicRepository {
             // liked without holding this page open behind the whole list —
             // see [syncLikedMusic] and MainViewModel's fetchLibrary.
             val liked = async { browseSongs(LIKED_MUSIC).getOrNull() }
-            val added = async { runCatching { songsPaged(LIBRARY_SONGS) }.getOrDefault(emptyList()) }
+            val added = async { runCatching { songsPaged(LIBRARY_SONGS).songs }.getOrDefault(emptyList()) }
             val shelves = LIBRARY_FEEDS
                 .map { (title, browseId) ->
                     async {
@@ -879,8 +879,16 @@ object YtMusicRepository {
      *
      * Takes as long as the list is long — see [songsPaged].
      */
-    suspend fun allSongs(browseId: String): Result<List<Song>> = call("all:$browseId") {
-        songsPaged(browseId).ifEmpty { error("No tracks here") }
+    data class PlaylistSongsSnapshot(val songs: List<Song>, val complete: Boolean)
+
+    suspend fun allSongs(browseId: String): Result<List<Song>> =
+        allSongsSnapshot(browseId).map { it.songs }
+
+    /** Returns completeness as well as rows so callers never treat a failed or capped scan as complete. */
+    suspend fun allSongsSnapshot(browseId: String): Result<PlaylistSongsSnapshot> = call("all:$browseId") {
+        songsPaged(browseId).let { snapshot ->
+            snapshot.takeIf { it.songs.isNotEmpty() } ?: error("No tracks here")
+        }
     }
 
     /**
@@ -895,7 +903,7 @@ object YtMusicRepository {
      * nobody is watching — the library sync, an artist's back catalogue. For
      * anything a screen is waiting on, use [browseSongs] and [moreSongs].
      */
-    private suspend fun songsPaged(browseId: String): List<Song> {
+    private suspend fun songsPaged(browseId: String): PlaylistSongsSnapshot {
         val out = LinkedHashMap<String, Song>()
         var response = Innertube.browse(browseId)
         if (browseId.startsWith("MPREb")) {
@@ -903,6 +911,7 @@ object YtMusicRepository {
             albumPlaylistOf(response, albumRows)?.let { response = it }
         }
         var page = 1
+        var complete = true
         // Named by the first page alone; see [InnertubeParser.podcastShow].
         val show = InnertubeParser.podcastShow(response)
         while (true) {
@@ -912,10 +921,20 @@ object YtMusicRepository {
             val shelf = InnertubeParser.parsePlaylistShelf(response)
             (shelf?.songs ?: InnertubeParser.collectSongsDeep(response, show)).forEach { out[it.videoId] = it }
             val token = shelf?.continuation ?: InnertubeParser.continuationToken(response)
-            if (token == null || page++ >= MAX_PAGES) break
-            response = runCatching { Innertube.browseContinuation(token) }.getOrNull() ?: break
+            if (token == null) break
+            if (page >= MAX_PAGES) {
+                complete = false
+                break
+            }
+            val next = runCatching { Innertube.browseContinuation(token) }.getOrNull()
+            if (next == null) {
+                complete = false
+                break
+            }
+            response = next
+            page++
         }
-        return out.values.toList()
+        return PlaylistSongsSnapshot(out.values.toList(), complete)
     }
 
     /**
@@ -1137,7 +1156,7 @@ object YtMusicRepository {
         coroutineScope {
             val fullSongsDeferred = async {
                 page.moreSongsBrowseId?.let { playlistId ->
-                    runCatching { songsPaged(playlistId) }.getOrNull()
+                    runCatching { songsPaged(playlistId).songs }.getOrNull()
                 }
             }
             val shelvesDeferred = page.sections.map { shelf ->
