@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
@@ -74,9 +75,10 @@ object Downloader {
         requireM4a: Boolean,
         sink: OutputStream,
         onProgress: (written: Long, total: Long) -> Unit,
+        http1Only: Boolean = false,
     ): Long = withContext(Dispatchers.IO) {
         var url = stream.url
-        val total = contentLength(url) ?: error("Track unavailable: no length to fetch")
+        val total = contentLength(url, http1Only) ?: error("Track unavailable: no length to fetch")
 
         var position = 0L
         var reresolved = false
@@ -87,7 +89,7 @@ object Downloader {
             val length = minOf(CHUNK_BYTES, PlayerClient.rangeBytesFor(url), total - position)
 
             val response = try {
-                open(url, position, length)
+                open(url, position, length, http1Only)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -111,19 +113,23 @@ object Downloader {
                 // one stream into the middle of another produces a file that is
                 // the right length and unplayable, so a length that has moved
                 // is a failure rather than something to work around.
-                if (contentLength(url) != total) error("The stream changed mid-download — try again")
+                if (contentLength(url, http1Only) != total) error("The stream changed mid-download — try again")
                 continue
             }
 
             response.use {
-                if (it.code !in 200..299) error("Download failed (HTTP ${it.code})")
+                ensureSuccessful(it, "Download")
                 val body = it.body ?: error("Download failed: empty response")
                 val source = body.byteStream()
                 var readForChunk = 0L
                 while (readForChunk < length) {
                     coroutineContext.ensureActive()
                     val wanted = minOf(buffer.size.toLong(), length - readForChunk).toInt()
-                    val read = source.read(buffer, 0, wanted)
+                    val read = try {
+                        source.read(buffer, 0, wanted)
+                    } catch (e: IOException) {
+                        throw readFailure("range at ${position}B", e, it.protocol)
+                    }
                     if (read == -1) break
                     sink.write(buffer, 0, read)
                     readForChunk += read
@@ -133,7 +139,9 @@ object Downloader {
                 // A range that stops short is not fatal on its own — the next
                 // pass simply asks for what is left — but one that yields
                 // nothing at all would loop here forever.
-                if (readForChunk == 0L) error("Download stalled at ${position}B")
+                if (readForChunk == 0L) {
+                    throw RetryableDownloadException("Download stalled at ${position}B")
+                }
             }
         }
 
@@ -174,13 +182,14 @@ object Downloader {
         headers: Map<String, String>,
         sink: OutputStream,
         onProgress: (written: Long, total: Long) -> Unit,
+        http1Only: Boolean = false,
     ): Long = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url)
             .apply { headers.forEach { (name, value) -> header(name, value) } }
             .build()
 
-        Http.client.newCall(request).execute().use { response ->
-            if (response.code !in 200..299) error("Download failed (HTTP ${response.code})")
+        execute(request, http1Only, "Download request").use { response ->
+            ensureSuccessful(response, "Download")
             val body = response.body ?: error("Download failed: empty response")
             val total = response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0 }
             val source = body.byteStream()
@@ -189,7 +198,11 @@ object Downloader {
 
             while (true) {
                 coroutineContext.ensureActive()
-                val read = source.read(buffer)
+                val read = try {
+                    source.read(buffer)
+                } catch (e: IOException) {
+                    throw readFailure("download stream", e, response.protocol)
+                }
                 if (read == -1) break
                 sink.write(buffer, 0, read)
                 written += read
@@ -202,7 +215,7 @@ object Downloader {
             // committing would publish a file that looks whole and stops
             // halfway through the song.
             if (total != null && written < total) {
-                error("Download stopped at ${written}B of $total — try again")
+                throw RetryableDownloadException("Download stopped at ${written}B of $total — try again")
             }
             if (written == 0L) error("Download failed: nothing was sent")
             Log.d(TAG, "fetched ${written}B directly")
@@ -264,6 +277,7 @@ object Downloader {
         url: String,
         headers: Map<String, String>,
         statedCodec: String? = null,
+        http1Only: Boolean = false,
     ): Probe? = withContext(Dispatchers.IO) {
         runCatching {
             val request = Request.Builder().url(url)
@@ -273,9 +287,16 @@ object Downloader {
             // Awaited rather than executed: this runs inside the download
             // lookup's race, which has a deadline to keep, and a blocking call
             // would hold that race open past it on a server that stalled.
-            Http.client.newCall(request).awaitResponse().use { response ->
+            Http.downloadClient(http1Only).newCall(request).awaitResponse().use { response ->
                 if (response.code !in 200..299) {
                     Log.w(TAG, "probe refused (HTTP ${response.code})")
+                    if (response.code == 408 || response.code == 429 || response.code >= 500) {
+                        throw RetryableDownloadException(
+                            message = "Stream probe failed (HTTP ${response.code})",
+                            statusCode = response.code,
+                            retryAfterMillis = response.header("Retry-After")?.trim()?.toLongOrNull()?.times(1_000),
+                        )
+                    }
                     return@use null
                 }
                 // A 206 states the whole length after the slash; a 200 is a
@@ -292,6 +313,14 @@ object Downloader {
             }
         }.onFailure {
             if (it is CancellationException) throw it
+            if (it is RetryableDownloadException) throw it
+            if (it is IOException && it !is javax.net.ssl.SSLException) {
+                throw RetryableDownloadException(
+                    "Stream probe failed: ${it.message ?: it.javaClass.simpleName}",
+                    useHttp1Only = isHttp2Reset(it),
+                    cause = it,
+                )
+            }
             Log.w(TAG, "could not probe source file: ${it.message}")
         }.getOrNull()
     }
@@ -352,18 +381,18 @@ object Downloader {
     /** Enough to see past an XML prolog to an `<MPD`, and far more than any magic number needs. */
     private const val PROBE_BYTES = 512
 
-    private fun open(url: String, position: Long, length: Long) = Http.client
-        .newCall(
-            Request.Builder()
-                .url(url)
-                .header("Range", "bytes=$position-${position + length - 1}")
-                .apply {
-                    StreamResolver.mediaHeadersFor(url)
-                        .forEach { (name, value) -> header(name, value) }
-                }
-                .build(),
-        )
-        .execute()
+    private fun open(url: String, position: Long, length: Long, http1Only: Boolean): Response = execute(
+        Request.Builder()
+            .url(url)
+            .header("Range", "bytes=$position-${position + length - 1}")
+            .apply {
+                StreamResolver.mediaHeadersFor(url)
+                    .forEach { (name, value) -> header(name, value) }
+            }
+            .build(),
+        http1Only,
+        "Range request",
+    )
 
     /**
      * How many bytes the whole track is.
@@ -373,20 +402,63 @@ object Downloader {
      * don't — the extraction failsafe can produce one — and reads the total out
      * of the `Content-Range` header of a one-byte response.
      */
-    private fun contentLength(url: String): Long? {
+    private fun contentLength(url: String, http1Only: Boolean): Long? {
         url.toHttpUrlOrNull()?.queryParameter("clen")?.toLongOrNull()
             ?.takeIf { it > 0 }
             ?.let { return it }
 
-        return runCatching {
-            open(url, 0, 1).use { response ->
+        return try {
+            open(url, 0, 1, http1Only).use { response ->
+                ensureSuccessful(response, "Track length request")
                 response.header("Content-Range")
                     ?.substringAfter('/', "")
                     ?.toLongOrNull()
                     ?.takeIf { it > 0 }
             }
-        }.onFailure { Log.w(TAG, "could not measure the track: ${it.message}") }.getOrNull()
+        } catch (e: RetryableDownloadException) {
+            throw e
+        } catch (e: IOException) {
+            Log.w(TAG, "could not measure the track: ${e.message}")
+            null
+        }
     }
+
+    private fun execute(request: Request, http1Only: Boolean, label: String): Response = try {
+        Http.downloadClient(http1Only).newCall(request).execute()
+    } catch (e: IOException) {
+        if (e is javax.net.ssl.SSLException) throw e
+        throw RetryableDownloadException(
+            "$label failed: ${e.message ?: e.javaClass.simpleName}",
+            useHttp1Only = isHttp2Reset(e),
+            cause = e,
+        )
+    }
+
+    private fun ensureSuccessful(response: Response, label: String) {
+        if (response.code in 200..299) return
+        val code = response.code
+        val message = "$label failed (HTTP $code)"
+        if (code == 408 || code == 429 || code >= 500) {
+            throw RetryableDownloadException(
+                message = message,
+                statusCode = code,
+                retryAfterMillis = response.header("Retry-After")?.trim()?.toLongOrNull()?.times(1_000),
+            )
+        }
+        throw IOException(message)
+    }
+
+    private fun readFailure(label: String, error: IOException, protocol: Protocol): RetryableDownloadException {
+        if (error is javax.net.ssl.SSLException) throw error
+        return RetryableDownloadException(
+            "$label failed: ${error.message ?: error.javaClass.simpleName}",
+            useHttp1Only = protocol == Protocol.HTTP_2 && isHttp2Reset(error),
+            cause = error,
+        )
+    }
+
+    private fun isHttp2Reset(error: IOException): Boolean =
+        error.message.orEmpty().contains("stream was reset", ignoreCase = true)
 
     private val REFUSAL_CODES = setOf(403, 404, 410)
 }

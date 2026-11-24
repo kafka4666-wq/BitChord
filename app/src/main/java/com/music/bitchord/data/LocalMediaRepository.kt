@@ -163,6 +163,10 @@ object LocalMediaRepository {
             )
         }
 
+        // A side-by-side package has a separate download index. Adopt files
+        // already exported by the original app from this user-visible folder;
+        // their tags and MediaStore URIs survive, but private playlist records do not.
+        Downloads.adoptSharedAudio(extraSongs)
         (filled + extraSongs).distinctBy { it.localUri ?: it.videoId }
     }
 

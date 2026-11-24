@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -822,6 +823,41 @@ object Downloads {
     }
 
     /**
+     * Index shared Music/BitChord files discovered by [LocalMediaRepository].
+     * The fork can rebuild local rows from public media, but it cannot recover
+     * the original install's private IDs or playlist records. Content URIs are
+     * used as local IDs so these files are recognized without guessing a remote
+     * catalogue identity.
+     */
+    fun adoptSharedAudio(songs: List<Song>) {
+        val imported = songs.mapNotNull { song ->
+            val uri = song.localUri ?: return@mapNotNull null
+            val id = song.videoId.takeIf { it.isNotBlank() } ?: uri
+            id to SavedSongMetadata(
+                videoId = id,
+                title = song.title,
+                artist = song.artist,
+                thumbnailUrl = song.thumbnailUrl,
+                durationText = song.durationText,
+                albumName = song.albumName,
+                uri = uri,
+                downloadFormat = song.downloadFormat,
+                dateAddedSeconds = song.localDateAddedSeconds,
+            )
+        }
+        if (imported.isEmpty()) return
+        record(
+            saved = { current ->
+                current + imported.filter { (id, _) -> id !in current }
+                    .associate { (id, metadata) -> id to metadata.uri }
+            },
+            meta = { current ->
+                current + imported.filter { (id, _) -> id !in current }.toMap()
+            },
+        )
+    }
+
+    /**
      * Returns the available files for one downloaded collection, in its saved
      * running order.
      *
@@ -951,6 +987,7 @@ object Downloads {
      */
     internal suspend fun run(context: Context, song: Song) = withContext(Dispatchers.IO) {
         val id = song.videoId
+        val quality = AppSettings.downloadQuality.value
         // Set before the lookup, not after it. Resolving where a lossless track
         // comes from is the long part of a download, and leaving the row on
         // "Queued" for all of it reads as a queue that has stopped rather than
@@ -958,20 +995,47 @@ object Downloads {
         _active.update { it + (id to DownloadState.Running(0f)) }
         DownloadSession.running(id, 0f)
 
-        try {
-            val plan = prepare(context, song)
-            // The manager is showing the row that was tapped, which for a music
-            // video is the wrong title and the wrong cover for the file actually
-            // being written. Corrected here rather than left to disagree with
-            // the notification and with the Downloads page afterwards.
-            DownloadSession.retitle(id, plan.track)
-            transfer(context, song, plan)
-        } catch (e: CancellationException) {
-            clear(id)
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "download failed for $id: ${e.message}", e)
-            fail(id, downloadFailureMessage(e))
+        var attempts = 0
+        var http1Only = false
+        while (true) {
+            try {
+                if (attempts > 0) {
+                    // The previous transfer has been aborted. Reset visible
+                    // progress and ask for a fresh signed URL at the same tier.
+                    _active.update { it + (id to DownloadState.Running(0f)) }
+                    DownloadSession.running(id, 0f)
+                    SourceRegistry.clearCompletedDownloadStreamCalls()
+                }
+                val plan = prepare(context, song, quality, http1Only)
+                // The manager is showing the row that was tapped, which for a music
+                // video is the wrong title and the wrong cover for the file actually
+                // being written. Corrected here rather than left to disagree with
+                // the notification and with the Downloads page afterwards.
+                DownloadSession.retitle(id, plan.track)
+                transfer(context, song, plan, http1Only)
+                return@withContext
+            } catch (e: CancellationException) {
+                clear(id)
+                throw e
+            } catch (e: Exception) {
+                if (attempts + 1 < DownloadRetryPolicy.MAX_ATTEMPTS && DownloadRetryPolicy.shouldRetry(e)) {
+                    http1Only = http1Only || DownloadRetryPolicy.useHttp1Only(e)
+                    val waitMs = DownloadRetryPolicy.delayMillis(e, attempts)
+                    attempts++
+                    Log.w(
+                        TAG,
+                        "transient download failure for $id; retry $attempts/" +
+                            "${DownloadRetryPolicy.MAX_ATTEMPTS - 1} in ${waitMs}ms" +
+                            if (http1Only) " using HTTP/1.1" else "",
+                        e,
+                    )
+                    delay(waitMs)
+                    continue
+                }
+                Log.w(TAG, "download failed for $id: ${e.message}", e)
+                fail(id, downloadFailureMessage(e))
+                return@withContext
+            }
         }
     }
 
@@ -996,7 +1060,12 @@ object Downloads {
      * running for a track that is still queued — or for one that gets cancelled
      * before its turn — and a preparation is not a download.
      */
-    internal suspend fun prepare(context: Context, song: Song): Prepared = withContext(Dispatchers.IO) {
+    internal suspend fun prepare(
+        context: Context,
+        song: Song,
+        quality: DownloadQuality = AppSettings.downloadQuality.value,
+        http1Only: Boolean = false,
+    ): Prepared = withContext(Dispatchers.IO) {
         // Downloads preserve the exact item the listener picked. Catalogue
         // matching is a manual playback action and must not silently change a
         // download or its filename.
@@ -1006,8 +1075,6 @@ object Downloads {
         // which rung they are fetching, and re-reading the setting per call
         // would let a change made mid-download splice two renditions into
         // one file.
-        val quality = AppSettings.downloadQuality.value
-
         // Asked before the lookup rather than after it, unlike the check on the
         // route's own filename below. A file already sitting in Music under a
         // lossless extension is the answer to the whole question, and spending
@@ -1036,7 +1103,7 @@ object Downloads {
             }
         }
         val route = try {
-            routeFor(context, track, quality)
+            routeFor(context, track, quality, http1Only)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -1075,7 +1142,7 @@ object Downloads {
      * commits or aborts, so a caller is free to call it a second time with a
      * freshly resolved plan without the first attempt leaving anything behind.
      */
-    private suspend fun transfer(context: Context, song: Song, plan: Prepared) {
+    private suspend fun transfer(context: Context, song: Song, plan: Prepared, http1Only: Boolean) {
         val id = song.videoId
         val track = plan.track
 
@@ -1140,6 +1207,7 @@ object Downloads {
                             onProgress = onSegment,
                             lyrics = lyrics?.await(),
                             artwork = artwork?.await(),
+                            http1Only = http1Only,
                         )
                     } else {
                         OfflineHls.save(
@@ -1150,6 +1218,7 @@ object Downloads {
                             onProgress = onSegment,
                             lyrics = lyrics?.await(),
                             artwork = artwork?.await(),
+                            http1Only = http1Only,
                         )
                     }
                     remember(song, track, savedUri, route.downloadFormat)
@@ -1162,11 +1231,15 @@ object Downloads {
                 val destination = DownloadStore.begin(context, name, route.mimeType)
                 pending = destination
                 destination.openStream().use { sink ->
-                    route.write(sink) { written, total ->
-                        val fraction = written.toFloat() / total
-                        _active.update { it + (id to DownloadState.Running(fraction)) }
-                        DownloadSession.running(id, fraction)
-                    }
+                    route.write(
+                        sink,
+                        { written, total ->
+                            val fraction = written.toFloat() / total
+                            _active.update { it + (id to DownloadState.Running(fraction)) }
+                            DownloadSession.running(id, fraction)
+                        },
+                        http1Only,
+                    )
                 }
                 val words = lyrics?.await()
                 val cover = artwork?.await()
@@ -1214,7 +1287,7 @@ object Downloads {
         val downloadFormat: String? = null,
         val taggable: Boolean = true,
         val offlineHls: Manifest? = null,
-        val write: suspend (OutputStream, (written: Long, total: Long) -> Unit) -> Unit,
+        val write: suspend (OutputStream, (written: Long, total: Long) -> Unit, http1Only: Boolean) -> Unit,
     )
 
     /**
@@ -1247,14 +1320,19 @@ object Downloads {
      *   than to the middle of this one. [Downloader.fetch] resolves again after
      *   a mid-download refusal and has to ask for the same rung it started on.
      */
-    private suspend fun routeFor(context: Context, track: Song, quality: DownloadQuality): Route {
+    private suspend fun routeFor(
+        context: Context,
+        track: Song,
+        quality: DownloadQuality,
+        http1Only: Boolean,
+    ): Route {
         val row = SourceRegistry.parseTrackKey(track.videoId)
         row?.let { (configId, trackId) ->
-            fromRow(track, configId, trackId, quality)?.let { kept ->
+            fromRow(track, configId, trackId, quality, http1Only)?.let { kept ->
                 sourceRoute(context, track, kept)?.let { return it }
             }
         }
-        fromSources(track, quality)?.let { kept ->
+        fromSources(track, quality, http1Only)?.let { kept ->
             sourceRoute(context, track, kept)?.let { return it }
         }
         if (row != null) {
@@ -1271,8 +1349,8 @@ object Downloads {
             mimeType = stream.downloadMimeType,
             describe = "${stream.kbps}kbps ${stream.mimeType}",
             downloadFormat = youtubeDownloadBadge(stream.downloadExtension, stream.kbps),
-            write = { sink, onProgress ->
-                Downloader.fetch(track.videoId, stream, quality.maxKbps, requireM4a, sink, onProgress)
+            write = { sink, onProgress, http1Only ->
+                Downloader.fetch(track.videoId, stream, quality.maxKbps, requireM4a, sink, onProgress, http1Only)
             },
         )
     }
@@ -1296,8 +1374,8 @@ object Downloads {
                 mimeType = probe.container.mimeType,
                 describe = stream.format.summary,
                 downloadFormat = stream.format.downloadBadge(),
-                write = { sink, onProgress ->
-                    Downloader.fetchDirect(stream.url, stream.headers, sink, onProgress)
+                write = { sink, onProgress, http1Only ->
+                    Downloader.fetchDirect(stream.url, stream.headers, sink, onProgress, http1Only)
                 },
             )
             is Downloader.Probe.Manifest -> {
@@ -1316,10 +1394,10 @@ object Downloads {
                         mimeType = assembled.mimeType,
                         describe = "${stream.format.summary} (assembled from ${if (dash) "DASH" else "HLS"})",
                         downloadFormat = stream.format.downloadBadge(),
-                        write = { sink, onProgress ->
+                        write = { sink, onProgress, http1Only ->
                             ManifestFile.write(
                                 context.cacheDir, stream.url, stream.headers, dash,
-                                assembled.extension, sink, onProgress,
+                                assembled.extension, sink, onProgress, http1Only,
                             )
                         },
                     )
@@ -1338,8 +1416,8 @@ object Downloads {
                         describe = stream.format.summary,
                         downloadFormat = stream.format.downloadBadge(),
                         offlineHls = Manifest(stream.url, stream.headers, dash = dash),
-                        write = { sink, onProgress ->
-                            Downloader.fetchDirect(stream.url, stream.headers, sink, onProgress)
+                        write = { sink, onProgress, http1Only ->
+                            Downloader.fetchDirect(stream.url, stream.headers, sink, onProgress, http1Only)
                         },
                     )
                 }
@@ -1360,7 +1438,7 @@ object Downloads {
             mimeType = copy.mimeType,
             describe = "song cache, ${copy.length} bytes",
             downloadFormat = if (copy.extension == "flac") "FLAC" else null,
-            write = { sink, onProgress -> AudioCache.copyOut(copy, sink, onProgress) },
+            write = { sink, onProgress, _ -> AudioCache.copyOut(copy, sink, onProgress) },
         )
     }
 
@@ -1390,7 +1468,7 @@ object Downloads {
      *   spend searching cannot be a window in which the setting changes and the
      *   two halves of one decision disagree.
      */
-    private suspend fun fromSources(track: Song, quality: DownloadQuality): Kept? {
+    private suspend fun fromSources(track: Song, quality: DownloadQuality, http1Only: Boolean): Kept? {
         val target = TrackMatcher.targetOf(track)
         val probes = java.util.concurrent.ConcurrentHashMap<String, Downloader.Probe>()
         // The resolver keeps to [SOURCE_LOOKUP_MS] on its own. This outer bound
@@ -1404,7 +1482,7 @@ object Downloads {
                     target,
                     SourceResolver.requestForDownload(quality),
                     keep = { candidate ->
-                        keepable(candidate, target.durationSec)
+                        keepable(candidate, target.durationSec, http1Only)
                             ?.also { probes[it.stream.url] = it.probe }
                             ?.stream
                     },
@@ -1413,6 +1491,7 @@ object Downloads {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (DownloadRetryPolicy.shouldRetry(e)) throw e
                 Log.w(TAG, "source lookup failed for ${track.videoId}: ${e.message}")
                 null
             }.also { timedOut = false }
@@ -1428,7 +1507,13 @@ object Downloads {
      * [track] from the source it is a row of, as itself — see
      * [SourceResolver.forDownloadOfRow] — or null to match it elsewhere.
      */
-    private suspend fun fromRow(track: Song, configId: String, trackId: String, quality: DownloadQuality): Kept? {
+    private suspend fun fromRow(
+        track: Song,
+        configId: String,
+        trackId: String,
+        quality: DownloadQuality,
+        http1Only: Boolean,
+    ): Kept? {
         val stream = try {
             SourceResolver.forDownloadOfRow(
                 configId,
@@ -1439,6 +1524,7 @@ object Downloads {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            if (DownloadRetryPolicy.shouldRetry(e)) throw e
             Log.w(TAG, "row lookup failed for ${track.videoId}: ${e.message}")
             null
         }
@@ -1446,7 +1532,7 @@ object Downloads {
             Log.d(TAG, "${track.videoId}: its own source has nothing to download; matching it elsewhere")
             return null
         }
-        return keepable(stream, TrackMatcher.targetOf(track).durationSec)
+        return keepable(stream, TrackMatcher.targetOf(track).durationSec, http1Only)
     }
 
     /**
@@ -1468,8 +1554,8 @@ object Downloads {
      *    the codec comes from the bytes and the bitrate from the file's length
      *    over the track's — marked inferred, as an addon's tier-derived 320 is.
      */
-    private suspend fun keepable(stream: SourceStream, durationSec: Int?): Kept? {
-        val probe = Downloader.probe(stream.url, stream.headers, stream.format.codec)
+    private suspend fun keepable(stream: SourceStream, durationSec: Int?, http1Only: Boolean): Kept? {
+        val probe = Downloader.probe(stream.url, stream.headers, stream.format.codec, http1Only)
         if (probe == null) {
             Log.d(TAG, "${stream.format.summary}: not a file a download can keep; passing")
             return null

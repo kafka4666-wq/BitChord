@@ -8,8 +8,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import okhttp3.Protocol
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
+import java.io.IOException
 
 /**
  * An offline copy of an unencrypted HLS media playlist.  This deliberately
@@ -26,6 +28,7 @@ internal object OfflineHls {
         onProgress: (Long, Long) -> Unit,
         lyrics: LyricsTag.Embeddable?,
         artwork: MediaTagger.Artwork?,
+        http1Only: Boolean = false,
     ): Uri = withContext(Dispatchers.IO) {
         val root = File(File(context.filesDir, "offline-hls"), id.hashCode().toUInt().toString(16))
         root.deleteRecursively()
@@ -34,9 +37,31 @@ internal object OfflineHls {
             fun request(target: String) = Request.Builder().url(target).apply {
                 headers.forEach { (name, value) -> header(name, value) }
             }.build()
-            val playlist = Http.client.newCall(request(url)).execute().use { response ->
-                if (!response.isSuccessful) error("HLS playlist failed (HTTP ${response.code})")
-                response.body?.string() ?: error("Empty HLS playlist")
+            fun execute(target: String, label: String) = try {
+                Http.downloadClient(http1Only).newCall(request(target)).execute()
+            } catch (e: IOException) {
+                throw networkFailure(label, e)
+            }
+            fun check(response: okhttp3.Response, label: String) {
+                if (response.isSuccessful) return
+                val code = response.code
+                val message = "$label failed (HTTP $code)"
+                if (code == 408 || code == 429 || code >= 500) {
+                    throw RetryableDownloadException(
+                        message,
+                        statusCode = code,
+                        retryAfterMillis = response.header("Retry-After")?.trim()?.toLongOrNull()?.times(1_000),
+                    )
+                }
+                error(message)
+            }
+            val playlist = execute(url, "HLS playlist").use { response ->
+                check(response, "HLS playlist")
+                try {
+                    response.body?.string() ?: error("Empty HLS playlist")
+                } catch (e: IOException) {
+                    throw networkFailure("HLS playlist", e, response.protocol)
+                }
             }
             if (!playlist.startsWith("#EXTM3U")) error("Invalid HLS playlist")
             if (playlist.contains("#EXT-X-KEY:") && !playlist.contains("METHOD=NONE")) {
@@ -55,10 +80,23 @@ internal object OfflineHls {
                 coroutineContext.ensureActive()
                 val target = base.resolve(remote)?.toString() ?: error("Invalid HLS fragment")
                 val local = "segment-${index.toString().padStart(5, '0')}.m4s"
-                Http.client.newCall(request(target)).execute().use { response ->
-                    if (!response.isSuccessful) error("HLS fragment failed (HTTP ${response.code})")
-                    response.body?.byteStream()?.use { input -> File(root, local).outputStream().use(input::copyTo) }
-                        ?: error("Empty HLS fragment")
+                execute(target, "HLS fragment").use { response ->
+                    check(response, "HLS fragment")
+                    val input = response.body?.byteStream() ?: error("Empty HLS fragment")
+                    input.use { source ->
+                        File(root, local).outputStream().use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            while (true) {
+                                val read = try {
+                                    source.read(buffer)
+                                } catch (e: IOException) {
+                                    throw networkFailure("HLS fragment", e, response.protocol)
+                                }
+                                if (read == -1) break
+                                output.write(buffer, 0, read)
+                            }
+                        }
+                    }
                 }
                 localNames[remote] = local
                 onProgress((index + 1).toLong(), references.distinct().size.toLong())
@@ -76,5 +114,15 @@ internal object OfflineHls {
             root.deleteRecursively()
             throw e
         }
+    }
+
+    private fun networkFailure(label: String, error: IOException, protocol: Protocol? = null): IOException {
+        if (error is javax.net.ssl.SSLException) return error
+        return RetryableDownloadException(
+            "$label transfer failed: ${error.message ?: error.javaClass.simpleName}",
+            useHttp1Only = (protocol == Protocol.HTTP_2 || protocol == null) &&
+                error.message.orEmpty().contains("stream was reset", ignoreCase = true),
+            cause = error,
+        )
     }
 }

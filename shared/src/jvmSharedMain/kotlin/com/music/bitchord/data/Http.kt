@@ -139,4 +139,17 @@ object Http {
         .addInterceptor(webDavInterceptor)
         .apply { if (USAGE_LOGGING_ENABLED) addNetworkInterceptor(usageInterceptor) }
         .build()
+
+    /**
+     * A download-specific client that retains the shared pool/interceptors but
+     * gives large lossless streams more time between received bytes. When a
+     * server resets an HTTP/2 stream, callers may retry with HTTP/1.1 without
+     * changing protocol behavior for playback or ordinary API calls.
+     */
+    fun downloadClient(http1Only: Boolean = false): OkHttpClient = client.newBuilder()
+        .readTimeout(90, TimeUnit.SECONDS)
+        .apply {
+            if (http1Only) protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+        }
+        .build()
 }

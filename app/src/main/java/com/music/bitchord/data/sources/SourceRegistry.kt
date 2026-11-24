@@ -384,6 +384,14 @@ object SourceRegistry {
             .forEach(AddonSource::clearCompletedTrackCalls)
     }
 
+    /** Refresh signed add-on/module links before retrying an aborted whole-track transfer. */
+    fun clearCompletedDownloadStreamCalls() {
+        clearCompletedAddonTrackCalls()
+        instances.values
+            .filterIsInstance<ModuleSource>()
+            .forEach(ModuleSource::clearCompletedStreamCalls)
+    }
+
     // ── Editing ─────────────────────────────────────────────────────────
 
     fun add(config: SourceConfig) = publish(configs.value + config.tidied())

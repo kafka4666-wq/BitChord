@@ -9,7 +9,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Protocol
 import okhttp3.Request
+import java.io.IOException
 import java.io.File
 import java.io.OutputStream
 
@@ -55,14 +57,46 @@ internal object ManifestFile {
         extension: String,
         sink: OutputStream,
         onProgress: (Long, Long) -> Unit,
+        http1Only: Boolean = false,
     ): Unit = withContext(Dispatchers.IO) {
         fun fetch(target: String): ByteArray {
             val request = Request.Builder().url(target).apply {
                 headers.forEach { (name, value) -> header(name, value) }
             }.build()
-            return Http.client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) error("Segment failed (HTTP ${response.code})")
-                response.body?.bytes() ?: error("Empty segment")
+            val response = try {
+                Http.downloadClient(http1Only).newCall(request).execute()
+            } catch (e: IOException) {
+                if (e is javax.net.ssl.SSLException) throw e
+                throw RetryableDownloadException(
+                    "Manifest request failed: ${e.message ?: e.javaClass.simpleName}",
+                    useHttp1Only = e.message.orEmpty().contains("stream was reset", ignoreCase = true),
+                    cause = e,
+                )
+            }
+            return response.use {
+                if (!it.isSuccessful) {
+                    val code = it.code
+                    val message = "Segment failed (HTTP $code)"
+                    if (code == 408 || code == 429 || code >= 500) {
+                        throw RetryableDownloadException(
+                            message = message,
+                            statusCode = code,
+                            retryAfterMillis = it.header("Retry-After")?.trim()?.toLongOrNull()?.times(1_000),
+                        )
+                    }
+                    error(message)
+                }
+                try {
+                    it.body?.bytes() ?: error("Empty segment")
+                } catch (e: IOException) {
+                    if (e is javax.net.ssl.SSLException) throw e
+                    throw RetryableDownloadException(
+                        "Segment transfer failed: ${e.message ?: e.javaClass.simpleName}",
+                        useHttp1Only = it.protocol == Protocol.HTTP_2 &&
+                            e.message.orEmpty().contains("stream was reset", ignoreCase = true),
+                        cause = e,
+                    )
+                }
             }
         }
 

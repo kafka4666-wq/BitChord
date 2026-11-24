@@ -154,13 +154,12 @@ object DownloadStore {
      * have one.
      */
     fun existing(context: Context, name: String): Uri? =
-        if (!AppSettings.exportDownloads.value) {
-            privateFile(context, name).takeIf { it.exists() }?.let(Uri::fromFile)
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            mediaStoreEntry(context, name)
-        } else {
-            legacyFile(name).takeIf { it.exists() }?.let(Uri::fromFile)
-        }
+        privateFile(context, name).takeIf { it.exists() }?.let(Uri::fromFile)
+            ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                mediaStoreEntry(context, name)
+            } else {
+                legacyFile(name).takeIf { it.exists() }?.let(Uri::fromFile)
+            }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun mediaStoreEntry(context: Context, name: String): Uri? = runCatching {
@@ -169,7 +168,7 @@ object DownloadStore {
             arrayOf(MediaStore.MediaColumns._ID),
             "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
                 "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
-            arrayOf(name, "%$FOLDER%"),
+            arrayOf(name, "%Music/$FOLDER/%"),
             null,
         )?.use { cursor ->
             if (!cursor.moveToFirst()) return@use null

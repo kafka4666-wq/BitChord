@@ -325,6 +325,9 @@ class ModuleManager {
         }
     }
 
+    /** Drop completed signed stream URLs before a retry, but keep calls already on the wire shared. */
+    fun clearCompletedStreamCalls() = streams.clearCompleted()
+
     // ── Failure handling ──────────────────────────────────────────────────
 
     /**

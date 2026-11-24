@@ -7,8 +7,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import okhttp3.Protocol
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
+import java.io.IOException
 import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.max
@@ -72,6 +74,7 @@ internal object OfflineDash {
         onProgress: (Long, Long) -> Unit,
         lyrics: LyricsTag.Embeddable?,
         artwork: MediaTagger.Artwork?,
+        http1Only: Boolean = false,
     ): Uri = withContext(Dispatchers.IO) {
         // The same directory the HLS packages live in, and the same layout, so
         // that everything which reads one reads both. The name is historical
@@ -84,9 +87,31 @@ internal object OfflineDash {
             fun request(target: String) = Request.Builder().url(target).apply {
                 headers.forEach { (name, value) -> header(name, value) }
             }.build()
-            val manifest = Http.client.newCall(request(url)).execute().use { response ->
-                if (!response.isSuccessful) error("DASH manifest failed (HTTP ${response.code})")
-                response.body?.string() ?: error("Empty DASH manifest")
+            fun execute(target: String, label: String) = try {
+                Http.downloadClient(http1Only).newCall(request(target)).execute()
+            } catch (e: IOException) {
+                throw networkFailure(label, e)
+            }
+            fun check(response: okhttp3.Response, label: String) {
+                if (response.isSuccessful) return
+                val code = response.code
+                val message = "$label failed (HTTP $code)"
+                if (code == 408 || code == 429 || code >= 500) {
+                    throw RetryableDownloadException(
+                        message,
+                        statusCode = code,
+                        retryAfterMillis = response.header("Retry-After")?.trim()?.toLongOrNull()?.times(1_000),
+                    )
+                }
+                error(message)
+            }
+            val manifest = execute(url, "DASH manifest").use { response ->
+                check(response, "DASH manifest")
+                try {
+                    response.body?.string() ?: error("Empty DASH manifest")
+                } catch (e: IOException) {
+                    throw networkFailure("DASH manifest", e, response.protocol)
+                }
             }
             val plan = parse(manifest)
             val base = url.toHttpUrlOrNull() ?: error("Invalid DASH URL")
@@ -98,10 +123,23 @@ internal object OfflineDash {
             remotes.forEachIndexed { index, remote ->
                 coroutineContext.ensureActive()
                 val target = base.resolve(remote)?.toString() ?: error("Invalid DASH segment")
-                Http.client.newCall(request(target)).execute().use { response ->
-                    if (!response.isSuccessful) error("DASH segment failed (HTTP ${response.code})")
+                execute(target, "DASH segment").use { response ->
+                    check(response, "DASH segment")
                     val body = response.body?.byteStream() ?: error("Empty DASH segment")
-                    body.use { input -> File(root, localName(index)).outputStream().use(input::copyTo) }
+                    body.use { source ->
+                        File(root, localName(index)).outputStream().use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            while (true) {
+                                val read = try {
+                                    source.read(buffer)
+                                } catch (e: IOException) {
+                                    throw networkFailure("DASH segment", e, response.protocol)
+                                }
+                                if (read == -1) break
+                                output.write(buffer, 0, read)
+                            }
+                        }
+                    }
                 }
                 onProgress((index + 1).toLong(), remotes.size.toLong())
             }
@@ -114,6 +152,16 @@ internal object OfflineDash {
             root.deleteRecursively()
             throw e
         }
+    }
+
+    private fun networkFailure(label: String, error: IOException, protocol: Protocol? = null): IOException {
+        if (error is javax.net.ssl.SSLException) return error
+        return RetryableDownloadException(
+            "$label transfer failed: ${error.message ?: error.javaClass.simpleName}",
+            useHttp1Only = (protocol == Protocol.HTTP_2 || protocol == null) &&
+                error.message.orEmpty().contains("stream was reset", ignoreCase = true),
+            cause = error,
+        )
     }
 
     private fun localName(index: Int) = "segment-${index.toString().padStart(5, '0')}.m4s"

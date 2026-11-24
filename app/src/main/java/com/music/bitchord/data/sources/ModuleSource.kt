@@ -45,6 +45,9 @@ class ModuleSource(
      */
     private val manager = ModuleManager()
 
+    /** Refresh cached stream URLs after a failed transfer without unloading JS modules or search results. */
+    internal fun clearCompletedStreamCalls() = manager.clearCompletedStreamCalls()
+
     // ── Health ────────────────────────────────────────────────────────────
 
     override suspend fun health(): SourceHealth = withContext(Dispatchers.IO) {
