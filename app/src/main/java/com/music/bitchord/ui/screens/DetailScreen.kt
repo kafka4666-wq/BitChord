@@ -1,7 +1,7 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.ui.components.trackArtSize
-import android.content.ContentObserver
+import android.database.ContentObserver
 import android.os.Build
 import android.os.Handler
 import android.os.Looper

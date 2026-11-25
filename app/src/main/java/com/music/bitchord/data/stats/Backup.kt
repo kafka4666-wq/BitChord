@@ -208,10 +208,11 @@ object Backup {
                 require(track.id.isNotBlank()) { "That backup contains an invalid track record" }
             }
             bucket.importedEvents.forEach { event ->
+                val listeningMillis = event.listeningMillis
                 require(event.eventId.isNotBlank() && event.batchId.isNotBlank() && event.trackId.isNotBlank()) {
                     "That backup contains an invalid imported listen"
                 }
-                require(event.listeningMillis == null || event.listeningMillis >= 0L) {
+                require(listeningMillis == null || listeningMillis >= 0L) {
                     "That backup contains an invalid imported listening duration"
                 }
                 require(eventIds.add(event.eventId)) { "That backup contains duplicate imported listens" }
