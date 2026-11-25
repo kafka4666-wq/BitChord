@@ -48,7 +48,14 @@ class BackupValidationTest {
     fun rejectsNegativeStatisticsAndMalformedKnownPreferenceTypes() {
         assertThrows(IllegalArgumentException::class.java) {
             Backup.validateContents(
-                Backup.BackupFile(listening = listOf(StoredBucket(month = "2025-01", tracks = listOf(TrackEntry("t", ms = -1)))),
+                Backup.BackupFile(
+                    listening = listOf(
+                        StoredBucket(
+                            month = "2025-01",
+                            tracks = listOf(TrackEntry(id = "t", ms = -1)),
+                        ),
+                    ),
+                ),
             )
         }
         assertThrows(IllegalArgumentException::class.java) {
@@ -70,13 +77,20 @@ class BackupValidationTest {
             title = "Song",
             artist = "Artist",
         )
-        Backup.validateContents(Backup.BackupFile(listening = listOf(StoredBucket("2025-01", importedEvents = listOf(valid)))))
+        Backup.validateContents(
+            Backup.BackupFile(
+                listening = listOf(StoredBucket(month = "2025-01", importedEvents = listOf(valid))),
+            ),
+        )
 
         assertThrows(IllegalArgumentException::class.java) {
             Backup.validateContents(
                 Backup.BackupFile(
                     listening = listOf(
-                        StoredBucket("2025-01", importedEvents = listOf(valid, valid.copy(batchId = "batch-2"))),
+                        StoredBucket(
+                            month = "2025-01",
+                            importedEvents = listOf(valid, valid.copy(batchId = "batch-2")),
+                        ),
                     ),
                 ),
             )
@@ -85,7 +99,10 @@ class BackupValidationTest {
             Backup.validateContents(
                 Backup.BackupFile(
                     listening = listOf(
-                        StoredBucket("2025-01", importedEvents = listOf(valid.copy(timeZoneId = "Not/AZone"))),
+                        StoredBucket(
+                            month = "2025-01",
+                            importedEvents = listOf(valid.copy(timeZoneId = "Not/AZone")),
+                        ),
                     ),
                 ),
             )
@@ -94,7 +111,10 @@ class BackupValidationTest {
             Backup.validateContents(
                 Backup.BackupFile(
                     listening = listOf(
-                        StoredBucket("2025-01", importedEvents = listOf(valid.copy(listeningMillis = -1))),
+                        StoredBucket(
+                            month = "2025-01",
+                            importedEvents = listOf(valid.copy(listeningMillis = -1)),
+                        ),
                     ),
                 ),
             )
