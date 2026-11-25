@@ -176,7 +176,7 @@ object Backup {
         val eventIds = HashSet<String>()
         file.listening.forEach { bucket ->
             val month = runCatching { YearMonth.parse(bucket.month).toString() }.getOrNull()
-                ?: error("That backup contains an invalid listening month")
+                ?: throw IllegalArgumentException("That backup contains an invalid listening month")
             require(month == bucket.month && months.add(month)) {
                 "That backup contains a duplicate or non-canonical listening month"
             }
