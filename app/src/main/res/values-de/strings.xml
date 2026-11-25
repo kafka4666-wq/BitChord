@@ -1565,6 +1565,12 @@
     <string name="home_recents_compact_subtitle">Zuletzt gehörte Titel als kompakte Zeilen statt als Karten anzeigen</string>
     <string name="hide_trending_home">Trends auf der Startseite ausblenden</string>
     <string name="user_playlists_at_top_home">Deine Playlists oben auf der Startseite anzeigen</string>
+    <string name="reorder_home_shelves">Home-Bereiche neu anordnen</string>
+    <string name="reorder_home_shelves_subtitle">Ordne die aktuell verfügbaren Home-Bereiche an</string>
+    <string name="restore_home_defaults">Home-Standardeinstellungen wiederherstellen</string>
+    <string name="move_home_shelf_up">Bereich nach oben verschieben</string>
+    <string name="move_home_shelf_down">Bereich nach unten verschieben</string>
     <string name="initial_tab">Startregisterkarte</string>
     <string name="initial_tab_footer">Wähle, welcher Haupttab beim Start von BitChord geöffnet wird. Danach kannst du wie gewohnt zwischen den Tabs wechseln.</string>
+    <string name="replay_archive">Replay-Archiv</string>
 </resources>

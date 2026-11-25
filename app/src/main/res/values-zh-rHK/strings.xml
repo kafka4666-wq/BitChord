@@ -1543,4 +1543,5 @@
     <string name="user_playlists_at_top_home">將你的播放清單放在首頁頂端</string>
     <string name="initial_tab">初始分頁</string>
     <string name="initial_tab_footer">選擇啟動 BitChord 時開啟的主要分頁。啟動後仍可正常切換分頁。</string>
+    <string name="replay_archive">Replay 封存</string>
 </resources>

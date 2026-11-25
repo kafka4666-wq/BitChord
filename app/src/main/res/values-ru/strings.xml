@@ -1599,6 +1599,12 @@
     <string name="home_recents_compact_subtitle">Показывать недавно прослушанные треки компактными строками вместо карточек</string>
     <string name="hide_trending_home">Скрыть популярное на главной</string>
     <string name="user_playlists_at_top_home">Разместить ваши плейлисты вверху главной</string>
+    <string name="reorder_home_shelves">Изменить порядок разделов главной</string>
+    <string name="reorder_home_shelves_subtitle">Настройте порядок доступных сейчас разделов главной</string>
+    <string name="restore_home_defaults">Восстановить настройки главной по умолчанию</string>
+    <string name="move_home_shelf_up">Переместить раздел вверх</string>
+    <string name="move_home_shelf_down">Переместить раздел вниз</string>
     <string name="initial_tab">Начальная вкладка</string>
     <string name="initial_tab_footer">Выберите, какая основная вкладка будет открываться при запуске BitChord. После запуска вкладки можно переключать как обычно.</string>
+    <string name="replay_archive">Архив Replay</string>
 </resources>

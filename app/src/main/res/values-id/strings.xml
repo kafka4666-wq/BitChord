@@ -1541,6 +1541,12 @@
     <string name="home_recents_compact_subtitle">Tampilkan lagu yang baru diputar dalam baris ringkas, bukan kartu</string>
     <string name="hide_trending_home">Sembunyikan Tren di Beranda</string>
     <string name="user_playlists_at_top_home">Letakkan playlist Anda di bagian atas Beranda</string>
+    <string name="reorder_home_shelves">Susun ulang bagian Beranda</string>
+    <string name="reorder_home_shelves_subtitle">Atur bagian yang tersedia saat ini di Beranda</string>
+    <string name="restore_home_defaults">Pulihkan setelan default Beranda</string>
+    <string name="move_home_shelf_up">Pindahkan bagian ke atas</string>
+    <string name="move_home_shelf_down">Pindahkan bagian ke bawah</string>
     <string name="initial_tab">Tab awal</string>
     <string name="initial_tab_footer">Pilih tab utama yang terbuka saat BitChord diluncurkan. Setelah diluncurkan, Anda dapat berpindah tab seperti biasa.</string>
+    <string name="replay_archive">Arsip Replay</string>
 </resources>

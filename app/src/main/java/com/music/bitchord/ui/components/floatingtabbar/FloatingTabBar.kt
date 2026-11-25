@@ -61,7 +61,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Indication
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -110,6 +110,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -446,6 +447,7 @@ private fun SharedTransitionScope.InlineBar(
         if (hasInlineTab) {
             InlineTab(
                 inlineTab = inlineTab,
+                selected = inlineTab.key == selectedTabKey,
                 onInlineTabClick = onInlineTabClick,
                 shapes = shapes,
                 sizes = sizes,
@@ -474,6 +476,7 @@ private fun SharedTransitionScope.InlineBar(
         if (standaloneTab != null) {
             InlineStandaloneTab(
                 standaloneTab = standaloneTab,
+                selected = standaloneTab.key == selectedTabKey,
                 shapes = shapes,
                 colors = colors,
                 elevations = elevations,
@@ -490,6 +493,7 @@ private fun SharedTransitionScope.InlineBar(
 @Composable
 private fun SharedTransitionScope.InlineTab(
     inlineTab: FloatingTabBarTab,
+    selected: Boolean,
     onInlineTabClick: () -> Unit,
     shapes: FloatingTabBarShapes,
     sizes: FloatingTabBarSizes,
@@ -516,7 +520,9 @@ private fun SharedTransitionScope.InlineTab(
             )
             .clip(shapes.tabBarShape)
             .then(tabBarContentModifier())
-            .clickable(
+            .selectable(
+                selected = selected,
+                role = Role.Tab,
                 onClick = {
                     onInlineTabClick()
                     inlineTab.onClick()
@@ -547,6 +553,7 @@ private fun SharedTransitionScope.InlineTab(
 @Composable
 private fun SharedTransitionScope.InlineStandaloneTab(
     standaloneTab: FloatingTabBarTab,
+    selected: Boolean,
     shapes: FloatingTabBarShapes,
     colors: FloatingTabBarColors,
     elevations: FloatingTabBarElevations,
@@ -575,7 +582,9 @@ private fun SharedTransitionScope.InlineStandaloneTab(
             )
             .clip(shapes.standaloneTabShape)
             .then(tabBarContentModifier())
-            .clickable(
+            .selectable(
+                selected = selected,
+                role = Role.Tab,
                 onClick = standaloneTab.onClick,
                 indication = standaloneTab.indication?.invoke(),
                 interactionSource = remember { MutableInteractionSource() }
@@ -695,6 +704,7 @@ private fun SharedTransitionScope.ExpandedBar(
             if (standaloneTab != null) {
                 ExpandedStandaloneTab(
                     standaloneTab = standaloneTab,
+                    selected = standaloneTab.key == selectedTabKey,
                     shapes = shapes,
                     colors = colors,
                     elevations = elevations,
@@ -984,7 +994,9 @@ private fun SharedTransitionScope.ExpandedTabs(
                                 .weight(1f)
                                 .skipToLookaheadSize()
                                 .clip(shapes.tabShape)
-                                .clickable(
+                                .selectable(
+                                    selected = isSelected,
+                                    role = Role.Tab,
                                     onClick = tab.onClick,
                                     indication = tab.indication?.invoke(),
                                     interactionSource = remember { MutableInteractionSource() }
@@ -1016,6 +1028,7 @@ private fun SharedTransitionScope.ExpandedTabs(
 @Composable
 private fun SharedTransitionScope.ExpandedStandaloneTab(
     standaloneTab: FloatingTabBarTab,
+    selected: Boolean,
     shapes: FloatingTabBarShapes,
     colors: FloatingTabBarColors,
     elevations: FloatingTabBarElevations,
@@ -1044,7 +1057,9 @@ private fun SharedTransitionScope.ExpandedStandaloneTab(
             )
             .clip(shapes.standaloneTabShape)
             .then(tabBarContentModifier())
-            .clickable(
+            .selectable(
+                selected = selected,
+                role = Role.Tab,
                 onClick = standaloneTab.onClick,
                 indication = standaloneTab.indication?.invoke(),
                 interactionSource = remember { MutableInteractionSource() }

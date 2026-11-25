@@ -1542,6 +1542,12 @@
     <string name="home_recents_compact_subtitle">最近再生した曲をカードではなくコンパクトな行で表示</string>
     <string name="hide_trending_home">ホームでトレンドを非表示</string>
     <string name="user_playlists_at_top_home">ホームの上部に自分のプレイリストを表示</string>
+    <string name="reorder_home_shelves">ホームの棚を並べ替え</string>
+    <string name="reorder_home_shelves_subtitle">ホームで現在利用できる棚の順序を設定します</string>
+    <string name="restore_home_defaults">ホームのデフォルトに戻す</string>
+    <string name="move_home_shelf_up">棚を上へ移動</string>
+    <string name="move_home_shelf_down">棚を下へ移動</string>
     <string name="initial_tab">起動時のタブ</string>
     <string name="initial_tab_footer">BitChordの起動時に開くメインタブを選択します。起動後は通常どおりタブを切り替えられます。</string>
+    <string name="replay_archive">Replay アーカイブ</string>
 </resources>

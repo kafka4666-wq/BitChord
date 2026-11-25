@@ -677,6 +677,7 @@ private fun BitChordApp(
     // the share sheet is up for. Apart from the ordinary Replay's, because the
     // year story is drawn from a calendar year rather than the page's period.
     var yearStoryOpen by rememberSaveable { mutableStateOf(false) }
+    var replayYearOverride by rememberSaveable { mutableStateOf<Int?>(null) }
     var showSpotifyCanvasAuth by remember { mutableStateOf(false) }
 
     // Hosted here rather than inside SourcesScreen so its frosted card has
@@ -883,7 +884,7 @@ private fun BitChordApp(
     val homeRecentsListLayout by AppSettings.homeRecentsListLayout.collectAsStateWithLifecycle()
     val hideHomeVideos by AppSettings.hideHomeVideos.collectAsStateWithLifecycle()
     val hideHomeTrending by AppSettings.hideHomeTrending.collectAsStateWithLifecycle()
-    val userPlaylistsAtTopOfHome by AppSettings.userPlaylistsAtTopOfHome.collectAsStateWithLifecycle()
+    val homeShelfOrder by AppSettings.homeShelfOrder.collectAsStateWithLifecycle()
     val hideTopPicks by AppSettings.hideTopPicks.collectAsStateWithLifecycle()
     val hideHomeMoods by AppSettings.hideHomeMoods.collectAsStateWithLifecycle()
     // Only what Home draws: Top Picks reads the unfiltered feed from the view model.
@@ -892,17 +893,17 @@ private fun BitChordApp(
         hideHomeVideos,
         hideRecents,
         hideHomeTrending,
-        userPlaylistsAtTopOfHome,
+        homeShelfOrder,
     ) {
         val loaded = homeState as? UiState.Success
-        if (loaded != null && (hideHomeVideos || hideRecents || hideHomeTrending || userPlaylistsAtTopOfHome)) {
+        if (loaded != null && (hideHomeVideos || hideRecents || hideHomeTrending || homeShelfOrder.isNotEmpty())) {
             UiState.Success(
                 homeShelvesForDisplay(
                     shelves = loaded.data,
                     hideRecents = hideRecents,
                     hideVideos = hideHomeVideos,
                     hideTrending = hideHomeTrending,
-                    playlistsAtTop = userPlaylistsAtTopOfHome,
+                    shelfOrder = homeShelfOrder,
                 ),
             )
         } else {
@@ -2568,6 +2569,10 @@ private fun BitChordApp(
     // The year the Home button offers. Read only while Home or the story is up.
     val replayYear = com.music.bitchord.ui.replay.year.rememberReplayYear(
         active = selectedTab == TAB_HOME || yearStoryOpen,
+        requestedYear = replayYearOverride,
+    )
+    val replayYears = com.music.bitchord.ui.replay.year.rememberReplayYears(
+        active = route == AppRoute.Replay,
     )
     val replayYearDescription = replayYear?.let {
         stringResource(R.string.replay_year_open, it.year.toString())
@@ -3180,6 +3185,11 @@ private fun BitChordApp(
                                     replaySharePage = null
                                     showReplayShare = true
                                 },
+                                yearOptions = replayYears,
+                                onOpenYear = { year ->
+                                    replayYearOverride = year
+                                    yearStoryOpen = true
+                                },
                                 contentPadding = listPadding,
                                 listState = replayListState,
                                 landingPage = replayLandingPage,
@@ -3324,6 +3334,7 @@ private fun BitChordApp(
                                 onConfirmBitPerfect = { confirmBitPerfect = it },
                                 onConfirmFixedVolume = { confirmFixedVolume = true },
                                 contentPadding = listPadding,
+                                homeShelves = (homeState as? UiState.Success)?.data.orEmpty(),
                             )
                         } else if (page != null) {
                             // Local Music, Downloads and the other device folders are
@@ -5136,7 +5147,10 @@ private fun BitChordApp(
         com.music.bitchord.ui.replay.year.ReplayYearHost(
             year = replayYear,
             open = yearStoryOpen,
-            onClose = { yearStoryOpen = false },
+            onClose = {
+                yearStoryOpen = false
+                replayYearOverride = null
+            },
         )
 
         // ---- Track menu ----

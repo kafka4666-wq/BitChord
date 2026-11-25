@@ -123,17 +123,28 @@ internal object ImportedHistoryStore {
     fun replaceAll(events: List<ImportedListen>) {
         if (!ready) return
         synchronized(lock) {
-            directory.listFiles()?.forEach { it.delete() }
-            events.distinctBy { it.eventId }.groupBy(::monthForEvent).forEach { (month, records) ->
-                runCatching { writeMonth(month, ImportedMonth(month, records)) }
-                    .onFailure { Log.w(TAG, "Could not restore imported history for $month", it) }
+            val stage = File(directory.parentFile, "$DIRECTORY.restore-stage")
+            stage.deleteRecursively()
+            check(stage.mkdirs() || stage.isDirectory) { "Could not stage imported listening history" }
+            try {
+                events.distinctBy { it.eventId }.groupBy(::monthForEvent).forEach { (month, records) ->
+                    writeMonth(stage, month, ImportedMonth(month, records))
+                }
+                replaceDirectory(stage)
+            } catch (failure: Exception) {
+                stage.deleteRecursively()
+                throw failure
             }
         }
     }
 
     private fun writeMonth(month: String, value: ImportedMonth) {
-        directory.mkdirs()
-        val atomic = AtomicFile(File(directory, "$month.json"))
+        writeMonth(directory, month, value)
+    }
+
+    private fun writeMonth(target: File, month: String, value: ImportedMonth) {
+        target.mkdirs()
+        val atomic = AtomicFile(File(target, "$month.json"))
         var output: java.io.FileOutputStream? = null
         try {
             output = atomic.startWrite()
@@ -141,6 +152,27 @@ internal object ImportedHistoryStore {
             atomic.finishWrite(output)
         } catch (failure: Exception) {
             output?.let(atomic::failWrite)
+            throw failure
+        }
+    }
+
+    private fun replaceDirectory(stage: File) {
+        val backup = File(directory.parentFile, "$DIRECTORY.restore-backup")
+        backup.deleteRecursively()
+        val hadOriginal = directory.exists()
+        try {
+            if (hadOriginal) check(directory.renameTo(backup)) { "Could not preserve existing imported history" }
+            if (!stage.renameTo(directory)) {
+                if (hadOriginal && !backup.renameTo(directory)) {
+                    error("Could not restore the previous imported history after staging failed")
+                }
+                error("Could not install imported listening history")
+            }
+            backup.deleteRecursively()
+        } catch (failure: Exception) {
+            if (!directory.exists() && backup.exists() && !backup.renameTo(directory)) {
+                failure.addSuppressed(IllegalStateException("The previous imported history remains at ${backup.name}"))
+            }
             throw failure
         }
     }

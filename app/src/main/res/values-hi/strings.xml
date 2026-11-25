@@ -1565,6 +1565,12 @@
     <string name="home_recents_compact_subtitle">हाल ही में चलाए गए ट्रैक कार्ड के बजाय कॉम्पैक्ट पंक्तियों में दिखाएँ</string>
     <string name="hide_trending_home">होम पर ट्रेंडिंग छिपाएँ</string>
     <string name="user_playlists_at_top_home">अपनी प्लेलिस्ट होम के सबसे ऊपर रखें</string>
+    <string name="reorder_home_shelves">होम शेल्फ़ का क्रम बदलें</string>
+    <string name="reorder_home_shelves_subtitle">होम पर अभी उपलब्ध शेल्फ़ का क्रम तय करें</string>
+    <string name="restore_home_defaults">होम की डिफ़ॉल्ट सेटिंग बहाल करें</string>
+    <string name="move_home_shelf_up">शेल्फ़ ऊपर ले जाएँ</string>
+    <string name="move_home_shelf_down">शेल्फ़ नीचे ले जाएँ</string>
     <string name="initial_tab">शुरुआती टैब</string>
     <string name="initial_tab_footer">चुनें कि BitChord शुरू होने पर कौन-सा मुख्य टैब खुले। शुरू होने के बाद आप सामान्य रूप से टैब बदल सकते हैं।</string>
+    <string name="replay_archive">Replay संग्रह</string>
 </resources>

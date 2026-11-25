@@ -2,6 +2,9 @@ package com.music.bitchord.data.settings
 
 import com.music.bitchord.data.webdav.update
 import com.music.bitchord.ui.components.VideoThumbnails
+import com.music.bitchord.ui.HOME_PLAYLISTS_SHELF_ID
+import com.music.bitchord.ui.decodeHomeShelfOrder
+import com.music.bitchord.ui.encodeHomeShelfOrder
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
@@ -538,8 +541,8 @@ object AppSettings {
     /** Home's Trending shelf. */
     val hideHomeTrending = MutableStateFlow(false)
 
-    /** Put the user's Playlists shelf ahead of the other Home feed shelves. */
-    val userPlaylistsAtTopOfHome = MutableStateFlow(false)
+    /** Ordered stable identifiers for shelves currently available on Home. */
+    val homeShelfOrder = MutableStateFlow<List<String>>(emptyList())
 
     /** Which main tab is selected on a fresh app launch. */
     val initialTab = MutableStateFlow(InitialTab.HOME)
@@ -1152,7 +1155,16 @@ object AppSettings {
         hideTopPicks.value = prefs.getBoolean(KEY_HIDE_TOP_PICKS, false)
         hideHomeMoods.value = prefs.getBoolean(KEY_HIDE_HOME_MOODS, false)
         hideHomeTrending.value = prefs.getBoolean(KEY_HIDE_HOME_TRENDING, false)
-        userPlaylistsAtTopOfHome.value = prefs.getBoolean(KEY_USER_PLAYLISTS_AT_TOP_OF_HOME, false)
+        val savedHomeShelfOrder = prefs.getString(KEY_HOME_SHELF_ORDER, null)
+        homeShelfOrder.value = if (savedHomeShelfOrder != null) {
+            decodeHomeShelfOrder(savedHomeShelfOrder)
+        } else if (prefs.getBoolean(KEY_USER_PLAYLISTS_AT_TOP_OF_HOME, false)) {
+            // Preserve the old playlists-first choice until the listener saves a
+            // complete shelf order. All other shelves retain their feed order.
+            listOf(HOME_PLAYLISTS_SHELF_ID)
+        } else {
+            emptyList()
+        }
         initialTab.value = runCatching {
             InitialTab.valueOf(prefs.getString(KEY_INITIAL_TAB, InitialTab.HOME.name) ?: InitialTab.HOME.name)
         }.getOrDefault(InitialTab.HOME)
@@ -1674,9 +1686,34 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_HIDE_HOME_TRENDING, value).apply()
     }
 
-    fun setUserPlaylistsAtTopOfHome(value: Boolean) {
-        userPlaylistsAtTopOfHome.value = value
-        prefs.edit().putBoolean(KEY_USER_PLAYLISTS_AT_TOP_OF_HOME, value).apply()
+    fun setHomeShelfOrder(value: List<String>) {
+        val stored = decodeHomeShelfOrder(encodeHomeShelfOrder(value))
+        homeShelfOrder.value = stored
+        prefs.edit()
+            .putString(KEY_HOME_SHELF_ORDER, encodeHomeShelfOrder(stored))
+            .putBoolean(KEY_USER_PLAYLISTS_AT_TOP_OF_HOME, false)
+            .apply()
+    }
+
+    /** Restores Home's visibility, Recents layout, and shelf order only. */
+    fun restoreHomeDefaults() {
+        hideRecents.value = false
+        homeRecentsListLayout.value = true
+        hideHomeVideos.value = false
+        hideTopPicks.value = false
+        hideHomeMoods.value = false
+        hideHomeTrending.value = false
+        homeShelfOrder.value = emptyList()
+        prefs.edit()
+            .putBoolean(KEY_HIDE_RECENTS, false)
+            .putBoolean(KEY_HOME_RECENTS_LIST_LAYOUT, true)
+            .putBoolean(KEY_HIDE_HOME_VIDEOS, false)
+            .putBoolean(KEY_HIDE_TOP_PICKS, false)
+            .putBoolean(KEY_HIDE_HOME_MOODS, false)
+            .putBoolean(KEY_HIDE_HOME_TRENDING, false)
+            .remove(KEY_HOME_SHELF_ORDER)
+            .remove(KEY_USER_PLAYLISTS_AT_TOP_OF_HOME)
+            .apply()
     }
 
     fun setInitialTab(value: InitialTab) {
@@ -2385,10 +2422,10 @@ object AppSettings {
      * file being restored from, and clearing them would sign the user out of
      * services the backup has nothing to say about.
      */
-    fun importPrefs(values: Map<String, Any?>) {
-        if (!this::prefs.isInitialized) return
+    fun importPrefs(values: Map<String, Any?>): Boolean {
+        if (!this::prefs.isInitialized) return false
         val kept = prefs.all.filterKeys { it in SECRETS || it in DEVICE_LOCAL }
-        prefs.edit().apply {
+        val committed = prefs.edit().apply {
             clear()
             val incoming = values.filterKeys { it !in SECRETS && it !in DEVICE_LOCAL }
             (kept + incoming).forEach { (key, value) ->
@@ -2402,8 +2439,9 @@ object AppSettings {
                     else -> Unit
                 }
             }
-        }.apply()
+        }.commit()
         reload()
+        return committed
     }
 
     /**
@@ -2524,6 +2562,8 @@ object AppSettings {
     private const val KEY_HIDE_TOP_PICKS = "hide_top_picks"
     private const val KEY_HIDE_HOME_MOODS = "hide_home_moods"
     private const val KEY_HIDE_HOME_TRENDING = "hide_home_trending"
+    private const val KEY_HOME_SHELF_ORDER = "home_shelf_order"
+    /** Legacy key read once for upgrade compatibility; new writes use [KEY_HOME_SHELF_ORDER]. */
     private const val KEY_USER_PLAYLISTS_AT_TOP_OF_HOME = "user_playlists_at_top_of_home"
     private const val KEY_INITIAL_TAB = "initial_tab"
     private const val KEY_SQUARE_VIDEO_THUMBNAILS = "square_video_thumbnails"
@@ -2607,4 +2647,3 @@ object AppSettings {
     private const val KEY_DISCORD_INFO_DISMISSED = "discord_info_dismissed"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
-

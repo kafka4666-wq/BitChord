@@ -68,6 +68,8 @@ import com.music.bitchord.R
 import com.music.bitchord.data.LocalGroup
 import com.music.bitchord.data.LocalGroups
 import com.music.bitchord.data.OfflinePlaylists
+import com.music.bitchord.data.SmartLocalCollection
+import com.music.bitchord.data.SmartLocalPlaylists
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.ROW_ART_PX
@@ -234,7 +236,8 @@ fun rememberLocalFolderGroups(
     tab: LocalFolderTab,
     songs: List<Song>,
     query: String,
-): List<LocalGroup> = remember(browseId, tab, songs, folder.collections, folder.playlists, query) {
+    smartPlaylists: List<SmartLocalCollection> = emptyList(),
+): List<LocalGroup> = remember(browseId, tab, songs, folder.collections, folder.playlists, smartPlaylists, query) {
     fun LocalGroup.matches() = query.isBlank() ||
         title.contains(query, ignoreCase = true) ||
         subtitle.contains(query, ignoreCase = true)
@@ -242,7 +245,19 @@ fun rememberLocalFolderGroups(
         LocalFolderTab.SONGS -> emptyList()
         LocalFolderTab.ARTISTS -> LocalGroups.artistsOf(browseId, songs).filter { it.matches() }
         LocalFolderTab.ALBUMS -> LocalGroups.albumsOf(browseId, songs, folder.collections).filter { it.matches() }
-        LocalFolderTab.PLAYLISTS -> folder.playlists.filter { it.matches() }
+        LocalFolderTab.PLAYLISTS -> {
+            val derived = smartPlaylists.map { collection ->
+                LocalGroup(
+                    browseId = SmartLocalPlaylists.BROWSE_PREFIX + collection.id,
+                    title = collection.title,
+                    subtitle = collection.subtitle,
+                    thumbnailUrl = collection.songs.firstOrNull { it.thumbnailUrl != null }?.thumbnailUrl,
+                    type = BrowseType.PLAYLIST,
+                    songs = collection.songs,
+                )
+            }
+            (derived + folder.playlists).filter { it.matches() }
+        }
         LocalFolderTab.FOLDERS -> LocalGroups.foldersOf(browseId, songs).filter { it.matches() }
     }
 }
@@ -321,10 +336,14 @@ internal fun LazyListScope.localFolderItems(
         if (folder.selectable) state.select(song) else onSongLongPress(song)
     }
     val groupClick: (LocalGroup) -> Unit = { group ->
-        if (state.selecting && group.type != BrowseType.OTHER) state.toggle(group) else folder.onOpenGroup(group)
+        if (group.browseId.startsWith(SmartLocalPlaylists.BROWSE_PREFIX)) {
+            if (group.songs.isNotEmpty()) onSongClick(group.songs, 0)
+        } else if (state.selecting && group.type != BrowseType.OTHER) state.toggle(group) else folder.onOpenGroup(group)
     }
     val groupHold: (LocalGroup) -> Unit = { group ->
-        if (folder.selectable && group.type != BrowseType.OTHER) state.select(group) else folder.onGroupLongPress(group)
+        if (group.browseId.startsWith(SmartLocalPlaylists.BROWSE_PREFIX)) {
+            Unit // A derived collection is neither editable nor a saved playlist.
+        } else if (folder.selectable && group.type != BrowseType.OTHER) state.select(group) else folder.onGroupLongPress(group)
     }
 
     val isCurrentRow = playingRowMatcher(songs, currentSong)

@@ -113,7 +113,7 @@ import com.music.bitchord.ui.screens.CACHE_FOLDER_BROWSE_ID
 import com.music.bitchord.data.LocalGroup
 import com.music.bitchord.data.LocalGroups
 import com.music.bitchord.data.OfflinePlaylists
-import com.music.bitchord.data.matchesSearch
+import com.music.bitchord.data.matchingSearch
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -268,7 +268,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val term = query.trim()
         when {
             term.isEmpty() -> null
-            state is UiState.Success -> UiState.Success(state.data.filter { it.matchesSearch(term) })
+            state is UiState.Success -> UiState.Success(state.data.matchingSearch(term))
             else -> state
         }
     }.flowOn(Dispatchers.Default)

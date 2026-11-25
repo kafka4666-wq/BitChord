@@ -365,7 +365,9 @@ object ReplaySync {
         }.toMap()
         onStep(Step.Restoring)
 
-        val local = if (keepLocal) ListeningStats.exportAll().associateBy { it.month } else emptyMap()
+        val previousBuckets = ListeningStats.exportAll()
+        val previousSettings = AppSettings.exportPrefs()
+        val local = if (keepLocal) previousBuckets.associateBy { it.month } else emptyMap()
         val combined: List<StoredBucket> = (remote.keys + local.keys).sorted().map { month ->
             val a = remote[month]
             val b = local[month]
@@ -380,9 +382,26 @@ object ReplaySync {
                 else -> a ?: b!!
             }
         }
-        ListeningStats.importAll(combined)
-        AppSettings.importPrefs(manifest.settings.mapValues { it.value.decoded() })
-        SearchHistory.reload()
+        try {
+            ListeningStats.importAll(combined)
+            check(AppSettings.importPrefs(manifest.settings.mapValues { it.value.decoded() })) {
+                "Could not write restored settings"
+            }
+            SearchHistory.reload()
+        } catch (failure: Exception) {
+            runCatching { ListeningStats.importAll(previousBuckets) }
+                .exceptionOrNull()
+                ?.let(failure::addSuppressed)
+            runCatching {
+                check(AppSettings.importPrefs(previousSettings)) { "Could not restore the previous settings" }
+            }
+                .exceptionOrNull()
+                ?.let(failure::addSuppressed)
+            runCatching { SearchHistory.reload() }
+                .exceptionOrNull()
+                ?.let(failure::addSuppressed)
+            throw failure
+        }
 
         // What is in Drive for this partition is exactly what came down, so
         // the next sync uploads only what this phone adds to it.

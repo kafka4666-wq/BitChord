@@ -27,11 +27,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
@@ -107,6 +110,9 @@ fun ReplayScreen(
     onOpenArtist: (String?, String) -> Unit,
     onOpenAlbum: (String?, String, String?, String?) -> Unit,
     onShare: () -> Unit,
+    /** Opens a yearly story for an actual year with stored listening data. */
+    yearOptions: List<Int>,
+    onOpenYear: (Int) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
@@ -174,7 +180,7 @@ fun ReplayScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding,
         ) {
-            item("heading") { Heading(state, onPeriodChange, dark) }
+            item("heading") { Heading(state, onPeriodChange, dark, yearOptions, onOpenYear) }
 
             when {
                 state.loading && summary == null -> item("loading") {
@@ -265,9 +271,16 @@ fun ReplayScreen(
 // ── Heading ─────────────────────────────────────────────────────────────────
 
 @Composable
-private fun Heading(state: ReplayState, onPeriodChange: (ReplayPeriod) -> Unit, dark: Boolean) {
+private fun Heading(
+    state: ReplayState,
+    onPeriodChange: (ReplayPeriod) -> Unit,
+    dark: Boolean,
+    yearOptions: List<Int>,
+    onOpenYear: (Int) -> Unit,
+) {
     val context = LocalContext.current
     val textColor = if (dark) Color.White else Color.Black
+    var archiveExpanded by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.padding(horizontal = PAGE_GUTTER + 4.dp)) {
         Spacer(Modifier.height(48.dp))
         Text(
@@ -283,6 +296,27 @@ private fun Heading(state: ReplayState, onPeriodChange: (ReplayPeriod) -> Unit, 
         )
         Spacer(Modifier.height(14.dp))
         PeriodPicker(state.period, onPeriodChange, dark)
+        if (yearOptions.isNotEmpty()) {
+            Box {
+                TextButton(onClick = { archiveExpanded = true }) {
+                    Text(stringResource(R.string.replay_archive), color = textColor)
+                }
+                DropdownMenu(
+                    expanded = archiveExpanded,
+                    onDismissRequest = { archiveExpanded = false },
+                ) {
+                    yearOptions.forEach { year ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.replay_year_open, year.toString())) },
+                            onClick = {
+                                archiveExpanded = false
+                                onOpenYear(year)
+                            },
+                        )
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(18.dp))
     }
 }

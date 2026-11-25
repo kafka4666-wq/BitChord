@@ -298,6 +298,11 @@
     <string name="home_recents_compact_subtitle">Show recently played tracks as compact rows instead of cards</string>
     <string name="hide_trending_home">Hide Trending on Home</string>
     <string name="user_playlists_at_top_home">Put your playlists at the top of Home</string>
+    <string name="reorder_home_shelves">Reorder Home shelves</string>
+    <string name="reorder_home_shelves_subtitle">Arrange the shelves currently available on Home</string>
+    <string name="restore_home_defaults">Restore Home defaults</string>
+    <string name="move_home_shelf_up">Move shelf up</string>
+    <string name="move_home_shelf_down">Move shelf down</string>
     <string name="initial_tab">Initial tab</string>
     <string name="initial_tab_footer">Choose which main tab opens when BitChord launches. You can switch tabs normally after launch.</string>
     <string name="hide_home_videos">Hide videos from Home</string>
@@ -1510,4 +1515,5 @@
     <string name="replay_year_summary_minutes">Minutes listened</string>
     <string name="replay_year_mute">Mute the story</string>
     <string name="replay_year_unmute">Unmute the story</string>
+    <string name="replay_archive">Replay archive</string>
 </resources>

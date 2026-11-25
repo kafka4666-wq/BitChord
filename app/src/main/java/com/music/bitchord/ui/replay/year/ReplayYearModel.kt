@@ -11,7 +11,11 @@ import com.music.bitchord.data.stats.ArtistFacts
 import com.music.bitchord.data.stats.ListeningStats
 import com.music.bitchord.data.stats.RankedSong
 import com.music.bitchord.data.stats.ReplayYearData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.Month
 import java.util.Locale
@@ -151,6 +155,10 @@ class ReplayYear(val data: ReplayYearData) {
         fun yearShown(today: LocalDate): Int? =
             if (today.month == Month.DECEMBER) today.year else null
 
+        /** An explicitly selected archive year, or the seasonal Home year. */
+        fun yearToLoad(requestedYear: Int?, today: LocalDate): Int? =
+            requestedYear ?: yearShown(today)
+
         /**
          * The song most played by [artist], other than any in [avoid].
          *
@@ -202,19 +210,42 @@ class ReplayYear(val data: ReplayYearData) {
  * in the background is the year that opens.
  */
 @Composable
-fun rememberReplayYear(active: Boolean): ReplayYear? {
+fun rememberReplayYear(active: Boolean, requestedYear: Int? = null): ReplayYear? {
     var year by remember { mutableStateOf<ReplayYear?>(null) }
-    LaunchedEffect(active) {
+    LaunchedEffect(active, requestedYear) {
         if (!active) return@LaunchedEffect
-        val shown = ReplayYear.yearShown(LocalDate.now()) ?: run { year = null; return@LaunchedEffect }
-        delay(HOME_SETTLE_MS)
+        val shown = ReplayYear.yearToLoad(requestedYear, LocalDate.now())
+            ?: run { year = null; return@LaunchedEffect }
+        year = null
+        if (requestedYear == null) delay(HOME_SETTLE_MS)
         val data = ListeningStats.year(shown)
         year = if (data.summary.isEmpty) null else ReplayYear(data)
     }
     return year
 }
 
+/** Available calendar years for the Replay archive, refreshed after imports or device sync. */
+@Composable
+fun rememberReplayYears(active: Boolean): List<Int> {
+    var years by remember { mutableStateOf(emptyList<Int>()) }
+    LaunchedEffect(active) {
+        if (!active) return@LaunchedEffect
+        suspend fun refresh() {
+            years = withContext(Dispatchers.IO) {
+                ListeningStats.allMonths().map { it.year }.distinct().sortedDescending()
+            }
+        }
+        combine(ListeningStats.historyRevision, ListeningStats.peerRevision) { _, _ -> Unit }
+            .collectLatest {
+                delay(YEAR_LIST_SETTLE_MS)
+                refresh()
+            }
+    }
+    return years
+}
+
 private const val HOME_SETTLE_MS = 900L
+private const val YEAR_LIST_SETTLE_MS = 250L
 
 /** How far down the chart counts as a top song, kept for the cards about them. */
 private const val TOP_RESERVED = 5

@@ -249,10 +249,41 @@ object LocalGroups {
  * into the Search tab with its Library source picked, which has to find the
  * same tracks a folder would.
  */
-fun Song.matchesSearch(query: String): Boolean =
-    title.contains(query, ignoreCase = true) ||
-        artist.contains(query, ignoreCase = true) ||
-        albumName?.contains(query, ignoreCase = true) == true
+private val SEARCH_TOKEN = Regex("[\\p{L}\\p{N}]+")
+
+private fun searchTokens(text: String): List<String> =
+    SEARCH_TOKEN.findAll(text.lowercase(Locale.ROOT)).map { it.value }.toList()
+
+/**
+ * Every query word must occur in at least one searchable metadata word. Words
+ * may be supplied by different fields, as users often remember a title and an
+ * artist together; punctuation and whitespace both separate words. Keeping
+ * this as a predicate means callers' existing list order remains untouched.
+ */
+fun Song.matchesSearch(query: String): Boolean {
+    return localSongSearchMatcher(query)(this)
+}
+
+/** Build once per query when filtering several structures against the same text. */
+fun localSongSearchMatcher(query: String): (Song) -> Boolean {
+    val terms = searchTokens(query)
+    return { song -> song.matchesSearchTerms(terms) }
+}
+
+/** Filter a list with one query parse while retaining its existing order. */
+fun List<Song>.matchingSearch(query: String): List<Song> {
+    val matches = localSongSearchMatcher(query)
+    return filter(matches)
+}
+
+private fun Song.matchesSearchTerms(terms: List<String>): Boolean {
+    if (terms.isEmpty()) return true
+    return terms.all { term ->
+        title.contains(term, ignoreCase = true) ||
+            artist.contains(term, ignoreCase = true) ||
+            albumName?.contains(term, ignoreCase = true) == true
+    }
+}
 
 /** A device folder's running order, per the sort its top bar menu picked. */
 fun List<Song>.sortedForLibrary(order: LocalMusicSort): List<Song> = when (order) {

@@ -1481,6 +1481,12 @@
     <string name="home_recents_compact_subtitle">Hiển thị các bản nhạc vừa nghe dưới dạng hàng gọn thay vì thẻ</string>
     <string name="hide_trending_home">Ẩn Xu hướng trên Trang chủ</string>
     <string name="user_playlists_at_top_home">Đưa danh sách phát của bạn lên đầu Trang chủ</string>
+    <string name="reorder_home_shelves">Sắp xếp lại các mục trên Trang chủ</string>
+    <string name="reorder_home_shelves_subtitle">Sắp xếp các mục hiện có trên Trang chủ</string>
+    <string name="restore_home_defaults">Khôi phục mặc định Trang chủ</string>
+    <string name="move_home_shelf_up">Di chuyển mục lên</string>
+    <string name="move_home_shelf_down">Di chuyển mục xuống</string>
     <string name="initial_tab">Tab mở đầu</string>
     <string name="initial_tab_footer">Chọn tab chính sẽ mở khi BitChord khởi chạy. Sau khi khởi chạy, bạn vẫn có thể chuyển tab như bình thường.</string>
+    <string name="replay_archive">Kho lưu trữ Replay</string>
 </resources>

@@ -57,6 +57,13 @@ class ReplayYearModelTest {
         assertNull(ReplayYear.yearShown(LocalDate.of(2027, 1, 1)))
     }
 
+    @Test
+    fun explicitArchiveYearOverridesTheSeasonalHomeGate() {
+        assertEquals(2024, ReplayYear.yearToLoad(2024, LocalDate.of(2026, 6, 15)))
+        assertEquals(2026, ReplayYear.yearToLoad(null, LocalDate.of(2026, 12, 15)))
+        assertNull(ReplayYear.yearToLoad(null, LocalDate.of(2026, 6, 15)))
+    }
+
     private fun song(id: String, artist: String, album: String? = null) =
         Song(videoId = id, title = "Song $id", artist = artist, thumbnailUrl = "https://art/$id", albumName = album)
 

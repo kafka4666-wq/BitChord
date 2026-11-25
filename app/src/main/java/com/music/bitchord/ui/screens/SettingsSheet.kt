@@ -59,6 +59,8 @@ import androidx.compose.material.icons.rounded.Gradient
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.VisibilityOff
@@ -87,6 +89,7 @@ import com.music.bitchord.data.lyrics.translationLanguageName
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -155,6 +158,10 @@ import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.performance.resolvePerformanceRefreshRate
 import com.music.bitchord.ui.performance.supportedPerformanceRefreshRates
 import com.music.bitchord.data.model.Account
+import com.music.bitchord.data.model.HomeShelf
+import com.music.bitchord.ui.homeShelfStableId
+import com.music.bitchord.ui.moveHomeShelf
+import com.music.bitchord.ui.orderedByHomeShelfIds
 import com.music.bitchord.data.LocalMediaRepository
 import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.scrobbling.LastFM
@@ -218,6 +225,8 @@ fun SettingsScreen(
     /** Asks before a DAC with no settable volume may play at full scale. */
     onConfirmFixedVolume: () -> Unit,
     contentPadding: PaddingValues,
+    /** The real Home feed shelves, supplied only when the feed has loaded. */
+    homeShelves: List<HomeShelf> = emptyList(),
     modifier: Modifier = Modifier,
     /**
      * The category this page is, or null for the main page — which lists the
@@ -309,7 +318,7 @@ fun SettingsScreen(
     val hideTopPicks by AppSettings.hideTopPicks.collectAsStateWithLifecycle()
     val hideHomeMoods by AppSettings.hideHomeMoods.collectAsStateWithLifecycle()
     val hideHomeTrending by AppSettings.hideHomeTrending.collectAsStateWithLifecycle()
-    val userPlaylistsAtTopOfHome by AppSettings.userPlaylistsAtTopOfHome.collectAsStateWithLifecycle()
+    val homeShelfOrder by AppSettings.homeShelfOrder.collectAsStateWithLifecycle()
     val initialTab by AppSettings.initialTab.collectAsStateWithLifecycle()
     val smartVersionAlignment by AppSettings.smartVersionAlignment.collectAsStateWithLifecycle()
     val filterNonMusicAudio by AppSettings.filterNonMusicAudio.collectAsStateWithLifecycle()
@@ -317,6 +326,7 @@ fun SettingsScreen(
     val highPerformanceMode by AppSettings.highPerformanceMode.collectAsStateWithLifecycle()
     val performanceRefreshRate by AppSettings.performanceRefreshRate.collectAsStateWithLifecycle()
     val currentDisplay = LocalView.current.display
+    var showHomeShelfOrderDialog by remember { mutableStateOf(false) }
     val supportedRefreshRates = remember(currentDisplay) {
         currentDisplay.supportedPerformanceRefreshRates()
     }
@@ -1089,18 +1099,22 @@ fun SettingsScreen(
                     onClick = { AppSettings.setHideHomeTrending(!hideHomeTrending) },
                 )
             }
-            val playlistsAtTopTitle = stringResource(R.string.user_playlists_at_top_home)
-            row(playlistsAtTopTitle, "playlists", "playlist", "order", "feed", "home") {
+            val reorderHomeShelvesTitle = stringResource(R.string.reorder_home_shelves)
+            row(reorderHomeShelvesTitle, "playlists", "playlist", "order", "feed", "home", "shelves") {
                 SettingsRow(
                     icon = SfIcons.PlaylistPlay,
-                    title = playlistsAtTopTitle,
-                    trailing = {
-                        IosSwitch(
-                            checked = userPlaylistsAtTopOfHome,
-                            onCheckedChange = AppSettings::setUserPlaylistsAtTopOfHome,
-                        )
-                    },
-                    onClick = { AppSettings.setUserPlaylistsAtTopOfHome(!userPlaylistsAtTopOfHome) },
+                    title = reorderHomeShelvesTitle,
+                    subtitle = stringResource(R.string.reorder_home_shelves_subtitle),
+                    enabled = homeShelves.isNotEmpty(),
+                    onClick = { showHomeShelfOrderDialog = true },
+                )
+            }
+            val restoreHomeDefaultsTitle = stringResource(R.string.restore_home_defaults)
+            row(restoreHomeDefaultsTitle, "restore", "reset", "home", "defaults", "shelves") {
+                SettingsRow(
+                    icon = SfIcons.Tune,
+                    title = restoreHomeDefaultsTitle,
+                    onClick = AppSettings::restoreHomeDefaults,
                 )
             }
             val hideHomeVideosTitle = stringResource(R.string.hide_home_videos)
@@ -2288,6 +2302,90 @@ fun SettingsScreen(
         )
     }
 
+    if (showHomeShelfOrderDialog) {
+        HomeShelfOrderDialog(
+            shelves = homeShelves,
+            initialOrder = homeShelfOrder,
+            onDismiss = { showHomeShelfOrderDialog = false },
+            onSave = { order ->
+                AppSettings.setHomeShelfOrder(order)
+                showHomeShelfOrderDialog = false
+            },
+        )
+    }
+
+}
+
+@Composable
+private fun HomeShelfOrderDialog(
+    shelves: List<HomeShelf>,
+    initialOrder: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (List<String>) -> Unit,
+) {
+    val availableOrder = remember(shelves, initialOrder) {
+        shelves.orderedByHomeShelfIds(initialOrder).map(::homeShelfStableId)
+    }
+    var order by remember(availableOrder) { mutableStateOf(availableOrder) }
+    val labelsById = remember(shelves) { shelves.associateBy(::homeShelfStableId) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.reorder_home_shelves)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 440.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                order.forEachIndexed { index, id ->
+                    val shelf = labelsById[id] ?: return@forEachIndexed
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = shelf.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        IconButton(
+                            onClick = { order = moveHomeShelf(order, index, index - 1) },
+                            enabled = index > 0,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.KeyboardArrowUp,
+                                contentDescription = stringResource(R.string.move_home_shelf_up),
+                            )
+                        }
+                        IconButton(
+                            onClick = { order = moveHomeShelf(order, index, index + 1) },
+                            enabled = index < order.lastIndex,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = stringResource(R.string.move_home_shelf_down),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(order) }) {
+                Text(stringResource(R.string.save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
 }
 
 /** "3 months of listening" — the unit a backup is actually measured in. */

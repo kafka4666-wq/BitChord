@@ -176,6 +176,7 @@ object ListeningStats {
                 d.ms += playedMs
                 if (countsAsPlay) d.plays++
             }
+            if (countsAsPlay) _playRevision.value++
 
             // The lead artist, not the credit as a string. A track billed
             // "Cheema Y & Gur Sidhu" is not a third artist who happens to share
@@ -446,6 +447,20 @@ object ListeningStats {
     fun allMonths(): List<YearMonth> = (months() + PeerListening.months()).distinct().sorted()
 
     /**
+     * Actual lifetime play totals for the requested track ids, including the
+     * same native, imported and peer history that Replay counts. The aggregate
+     * is built once by [summary] and then filtered with a set lookup, so callers
+     * with a large local library do not compare every library row to every
+     * history row.
+     */
+    suspend fun playCountsFor(trackIds: Set<String>): Map<String, Int> {
+        if (trackIds.isEmpty()) return emptyMap()
+        return summary(ReplayPeriod.ALL_TIME).songs.asSequence()
+            .filter { it.song.videoId in trackIds && it.plays > 0 }
+            .associate { it.song.videoId to it.plays }
+    }
+
+    /**
      * Another device's months have been downloaded or dropped: the summary
      * held is no longer the answer. See [PeerListening].
      */
@@ -459,11 +474,16 @@ object ListeningStats {
 
     private val _historyRevision = MutableStateFlow(0)
 
+    private val _playRevision = MutableStateFlow(0)
+
     /** Bumped by [peersChanged], for a page that should redraw when it does. */
     val peerRevision: StateFlow<Int> = _peerRevision.asStateFlow()
 
     /** Bumped after a historical import or batch undo so an open Replay reloads. */
     val historyRevision: StateFlow<Int> = _historyRevision.asStateFlow()
+
+    /** Bumped once when a native track crosses the actual-play threshold. */
+    val playRevision: StateFlow<Int> = _playRevision.asStateFlow()
 
     private fun read(key: String): StoredBucket? {
         val file = File(directory, "$key.json")
@@ -598,23 +618,65 @@ object ListeningStats {
      */
     fun importAll(buckets: List<StoredBucket>) {
         if (!ready) return
-        synchronized(lock) {
-            open = null
-            dirty = false
-            directory.listFiles()?.forEach { it.delete() }
-            directory.mkdirs()
-            version++
-            cached = null
-            ImportedHistoryStore.replaceAll(buckets.flatMap { it.importedEvents })
-            buckets.forEach { bucket ->
-                val key = runCatching { YearMonth.parse(bucket.month).toString() }.getOrNull()
-                    ?: return@forEach
-                runCatching {
-                    File(directory, "$key.json")
-                        .writeText(json.encodeToString(StoredBucket.serializer(), bucket.copy(importedEvents = emptyList())))
-                }.onFailure { Log.w(TAG, "Could not import bucket $key", it) }
+        val normalized = buckets.map { bucket ->
+            val month = YearMonth.parse(bucket.month).toString()
+            require(month == bucket.month) { "Invalid listening month: ${bucket.month}" }
+            bucket.copy(importedEvents = emptyList())
+        }
+        require(normalized.map { it.month }.distinct().size == normalized.size) {
+            "Backup contains duplicate listening months"
+        }
+
+        // Build the complete replacement beside the live directory first. A
+        // corrupt month or a full disk therefore leaves the current Replay
+        // untouched instead of deleting it before discovering the failure.
+        val stage = File(directory.parentFile, "$DIRECTORY.restore-stage")
+        stage.deleteRecursively()
+        check(stage.mkdirs() || stage.isDirectory) { "Could not stage listening statistics" }
+        try {
+            normalized.forEach { bucket ->
+                File(stage, "${bucket.month}.json")
+                    .writeText(json.encodeToString(StoredBucket.serializer(), bucket))
             }
-            _historyRevision.value++
+        } catch (failure: Exception) {
+            stage.deleteRecursively()
+            throw failure
+        }
+
+        synchronized(lock) {
+            val previousImported = ImportedHistoryStore.readAll()
+            var importedReplaced = false
+            val backup = File(directory.parentFile, "$DIRECTORY.restore-backup")
+            try {
+                ImportedHistoryStore.replaceAll(buckets.flatMap { it.importedEvents })
+                importedReplaced = true
+                backup.deleteRecursively()
+                val hadOriginal = directory.exists()
+                if (hadOriginal) check(directory.renameTo(backup)) { "Could not preserve existing listening statistics" }
+                if (!stage.renameTo(directory)) {
+                    if (hadOriginal && !backup.renameTo(directory)) {
+                        error("Could not restore the previous listening statistics after staging failed")
+                    }
+                    error("Could not install listening statistics")
+                }
+                backup.deleteRecursively()
+                open = null
+                dirty = false
+                version++
+                cached = null
+                _historyRevision.value++
+            } catch (failure: Exception) {
+                stage.deleteRecursively()
+                if (!directory.exists() && backup.exists() && !backup.renameTo(directory)) {
+                    failure.addSuppressed(IllegalStateException("The previous listening statistics remain at ${backup.name}"))
+                }
+                if (importedReplaced) {
+                    runCatching { ImportedHistoryStore.replaceAll(previousImported) }
+                        .exceptionOrNull()
+                        ?.let(failure::addSuppressed)
+                }
+                throw failure
+            }
         }
     }
 

@@ -1541,6 +1541,12 @@
     <string name="home_recents_compact_subtitle">將最近播放的曲目以精簡列而非卡片顯示</string>
     <string name="hide_trending_home">在首頁隱藏熱門內容</string>
     <string name="user_playlists_at_top_home">將你的播放清單放在首頁頂端</string>
+    <string name="reorder_home_shelves">調整首頁內容區順序</string>
+    <string name="reorder_home_shelves_subtitle">排列首頁目前可用的內容區</string>
+    <string name="restore_home_defaults">還原首頁預設值</string>
+    <string name="move_home_shelf_up">上移內容區</string>
+    <string name="move_home_shelf_down">下移內容區</string>
     <string name="initial_tab">初始分頁</string>
     <string name="initial_tab_footer">選擇啟動 BitChord 時開啟的主要分頁。啟動後仍可正常切換分頁。</string>
+    <string name="replay_archive">Replay 封存</string>
 </resources>

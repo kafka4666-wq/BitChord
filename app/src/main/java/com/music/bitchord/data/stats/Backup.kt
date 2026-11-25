@@ -15,6 +15,8 @@ import kotlinx.serialization.json.encodeToStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.time.Instant
+import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -131,18 +133,96 @@ object Backup {
         require(file.version <= SCHEMA_VERSION) {
             "That backup was written by a newer version of BitChord"
         }
+        validateContents(file)
 
-        ListeningStats.importAll(file.listening)
-        AppSettings.importPrefs(file.settings.mapValues { it.value.decoded() })
-        // Shares AppSettings' preference file, so it has already been
-        // overwritten by the line above — it just doesn't know yet.
-        SearchHistory.reload()
+        val previousBuckets = ListeningStats.exportAll()
+        val previousSettings = AppSettings.exportPrefs()
+        try {
+            ListeningStats.importAll(file.listening)
+            check(AppSettings.importPrefs(file.settings.mapValues { it.value.decoded() })) {
+                "Could not write restored settings"
+            }
+            // Shares AppSettings' preference file, so it has already been
+            // overwritten by the line above — it just doesn't know yet.
+            SearchHistory.reload()
+        } catch (failure: Exception) {
+            // The stores use replacement semantics, so retain snapshots before
+            // touching either one. ListeningStats itself stages its files; this
+            // second layer handles a settings failure after that swap succeeds.
+            runCatching { ListeningStats.importAll(previousBuckets) }
+                .exceptionOrNull()
+                ?.let(failure::addSuppressed)
+            runCatching {
+                check(AppSettings.importPrefs(previousSettings)) { "Could not restore the previous settings" }
+            }
+                .exceptionOrNull()
+                ?.let(failure::addSuppressed)
+            runCatching { SearchHistory.reload() }
+                .exceptionOrNull()
+                ?.let(failure::addSuppressed)
+            throw failure
+        }
         Summary(
             months = file.listening.size,
             settings = file.settings.size,
             from = file.versionName,
             at = file.exportedAt,
         )
+    }
+
+    /** Refuse malformed values before either replacement-oriented store is touched. */
+    internal fun validateContents(file: BackupFile) {
+        val months = HashSet<String>()
+        val eventIds = HashSet<String>()
+        file.listening.forEach { bucket ->
+            val month = runCatching { YearMonth.parse(bucket.month).toString() }.getOrNull()
+                ?: error("That backup contains an invalid listening month")
+            require(month == bucket.month && months.add(month)) {
+                "That backup contains a duplicate or non-canonical listening month"
+            }
+            require(bucket.hours.size == 24 && bucket.hours.all { it >= 0L }) {
+                "That backup contains invalid hourly listening data"
+            }
+            val monthLength = YearMonth.parse(month).lengthOfMonth()
+            require(bucket.days.all { (day, ms) -> day in 1..monthLength && ms >= 0L }) {
+                "That backup contains invalid daily listening data"
+            }
+            val dayStats = bucket.trackDays.orEmpty().values +
+                bucket.artistDays.orEmpty().values + bucket.albumDays.orEmpty().values
+            require(dayStats.all { it.ms >= 0L && it.plays >= 0 }) {
+                "That backup contains invalid daily listening totals"
+            }
+            require(bucket.tracks.all { it.ms >= 0L && it.plays >= 0 } &&
+                (bucket.artists + bucket.albums).all { it.ms >= 0L && it.plays >= 0 }) {
+                "That backup contains invalid listening totals"
+            }
+            fun validEntityDays(days: Map<String, DayStats>): Boolean = days.all { (day, stats) ->
+                val date = runCatching { LocalDate.parse(day) }.getOrNull()
+                date != null && YearMonth.from(date).toString() == month && stats.ms >= 0L && stats.plays >= 0
+            }
+            require(bucket.tracks.all { validEntityDays(it.days) } &&
+                bucket.artists.all { validEntityDays(it.days) } && bucket.albums.all { validEntityDays(it.days) }) {
+                "That backup contains an invalid listening date or daily entity total"
+            }
+            bucket.tracks.forEach { track ->
+                require(track.id.isNotBlank()) { "That backup contains an invalid track record" }
+            }
+            bucket.importedEvents.forEach { event ->
+                require(event.eventId.isNotBlank() && event.batchId.isNotBlank() && event.trackId.isNotBlank()) {
+                    "That backup contains an invalid imported listen"
+                }
+                require(event.listeningMillis == null || event.listeningMillis >= 0L) {
+                    "That backup contains an invalid imported listening duration"
+                }
+                require(eventIds.add(event.eventId)) { "That backup contains duplicate imported listens" }
+                require(runCatching { ZoneId.of(event.timeZoneId) }.isSuccess) {
+                    "That backup contains an invalid imported-listen time zone"
+                }
+            }
+        }
+        file.settings.values.forEach { value ->
+            require(value.isValid()) { "That backup contains an invalid setting value" }
+        }
     }
 
     /** What an import turned out to contain, for the line shown afterwards. */
@@ -180,6 +260,17 @@ object Backup {
         val value: String? = null,
         val values: List<String> = emptyList(),
     ) {
+        /** Unknown future types remain skippable; malformed known types do not. */
+        internal fun isValid(): Boolean = when (type) {
+            BOOLEAN -> value?.toBooleanStrictOrNull() != null
+            INT -> value?.toIntOrNull() != null
+            LONG -> value?.toLongOrNull() != null
+            FLOAT -> value?.toFloatOrNull()?.isFinite() == true
+            STRING -> value != null
+            STRING_SET -> true
+            else -> true
+        }
+
         fun decoded(): Any? = when (type) {
             BOOLEAN -> value?.toBooleanStrictOrNull()
             INT -> value?.toIntOrNull()

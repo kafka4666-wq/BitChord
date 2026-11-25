@@ -1537,6 +1537,12 @@
     <string name="home_recents_compact_subtitle">Mostrar las canciones reproducidas recientemente en filas compactas en lugar de tarjetas</string>
     <string name="hide_trending_home">Ocultar Tendencias en Inicio</string>
     <string name="user_playlists_at_top_home">Mostrar tus listas de reproducción al principio de Inicio</string>
+    <string name="reorder_home_shelves">Reordenar secciones de Inicio</string>
+    <string name="reorder_home_shelves_subtitle">Organiza las secciones disponibles actualmente en Inicio</string>
+    <string name="restore_home_defaults">Restaurar valores predeterminados de Inicio</string>
+    <string name="move_home_shelf_up">Mover sección arriba</string>
+    <string name="move_home_shelf_down">Mover sección abajo</string>
     <string name="initial_tab">Pestaña inicial</string>
     <string name="initial_tab_footer">Elige qué pestaña principal se abre al iniciar BitChord. Después del inicio, puedes cambiar de pestaña con normalidad.</string>
+    <string name="replay_archive">Archivo de Replay</string>
 </resources>

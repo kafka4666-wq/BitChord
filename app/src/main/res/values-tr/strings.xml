@@ -1522,6 +1522,12 @@
     <string name="home_recents_compact_subtitle">Son çalınan parçaları kartlar yerine kompakt satırlar hâlinde göster</string>
     <string name="hide_trending_home">Ana Sayfa’da Trendleri gizle</string>
     <string name="user_playlists_at_top_home">Çalma listelerini Ana Sayfa’nın en üstüne taşı</string>
+    <string name="reorder_home_shelves">Ana sayfa raflarını yeniden sırala</string>
+    <string name="reorder_home_shelves_subtitle">Ana sayfada şu anda kullanılabilen rafları sırala</string>
+    <string name="restore_home_defaults">Ana sayfa varsayılanlarını geri yükle</string>
+    <string name="move_home_shelf_up">Rafı yukarı taşı</string>
+    <string name="move_home_shelf_down">Rafı aşağı taşı</string>
     <string name="initial_tab">Başlangıç sekmesi</string>
     <string name="initial_tab_footer">BitChord açıldığında hangi ana sekmenin açılacağını seçin. Açıldıktan sonra sekmeler arasında normal şekilde geçiş yapabilirsiniz.</string>
+    <string name="replay_archive">Replay arşivi</string>
 </resources>

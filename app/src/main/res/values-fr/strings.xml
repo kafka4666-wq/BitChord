@@ -1566,6 +1566,12 @@
     <string name="home_recents_compact_subtitle">Afficher les morceaux récemment écoutés en lignes compactes plutôt qu’en cartes</string>
     <string name="hide_trending_home">Masquer les tendances sur Accueil</string>
     <string name="user_playlists_at_top_home">Placer vos playlists en haut de l’Accueil</string>
+    <string name="reorder_home_shelves">Réorganiser les sections de l’accueil</string>
+    <string name="reorder_home_shelves_subtitle">Organisez les sections actuellement disponibles sur l’accueil</string>
+    <string name="restore_home_defaults">Rétablir les paramètres par défaut de l’accueil</string>
+    <string name="move_home_shelf_up">Déplacer la section vers le haut</string>
+    <string name="move_home_shelf_down">Déplacer la section vers le bas</string>
     <string name="initial_tab">Onglet initial</string>
     <string name="initial_tab_footer">Choisissez l’onglet principal qui s’ouvre au lancement de BitChord. Vous pourrez ensuite changer d’onglet normalement.</string>
+    <string name="replay_archive">Archives Replay</string>
 </resources>

@@ -1547,6 +1547,12 @@
     <string name="home_recents_compact_subtitle">แสดงเพลงที่เล่นล่าสุดเป็นแถวขนาดกะทัดรัดแทนการ์ด</string>
     <string name="hide_trending_home">ซ่อนเพลงยอดนิยมบนหน้าหลัก</string>
     <string name="user_playlists_at_top_home">วางเพลย์ลิสต์ของคุณไว้ด้านบนสุดของหน้าหลัก</string>
+    <string name="reorder_home_shelves">จัดเรียงชั้นวางหน้าแรกใหม่</string>
+    <string name="reorder_home_shelves_subtitle">จัดเรียงชั้นวางที่มีอยู่ในหน้าแรกขณะนี้</string>
+    <string name="restore_home_defaults">คืนค่าเริ่มต้นของหน้าแรก</string>
+    <string name="move_home_shelf_up">ย้ายชั้นวางขึ้น</string>
+    <string name="move_home_shelf_down">ย้ายชั้นวางลง</string>
     <string name="initial_tab">แท็บเริ่มต้น</string>
     <string name="initial_tab_footer">เลือกแท็บหลักที่จะเปิดเมื่อเริ่ม BitChord หลังจากเปิดแอปแล้ว คุณยังสลับแท็บได้ตามปกติ</string>
+    <string name="replay_archive">คลัง Replay</string>
 </resources>

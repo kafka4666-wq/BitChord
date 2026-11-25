@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 
 /**
  * True where a search field sits on a surface its host draws — the top bar's
@@ -78,9 +82,9 @@ fun SearchField(
                 if (LocalSearchFieldOnSurface.current) {
                     Modifier.fillMaxHeight()
                 } else {
-                    // Fixed height prevents the row from growing when text is entered
+                    // A compact pill while retaining the recommended 48dp action height.
                     Modifier
-                        .height(46.dp)
+                        .heightIn(min = 48.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(11.dp))
                 },
             )
@@ -94,16 +98,20 @@ fun SearchField(
         // text field is the search affordance on every platform — and now that
         // pressing it is the only thing that runs a search, leaving it
         // decorative would mean the keyboard's own key was the single way in.
-        Icon(
-            Icons.Rounded.Search,
-            contentDescription = stringResource(Res.string.search),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(48.dp)
                 .clip(CircleShape)
-                .clickable(enabled = query.isNotBlank(), onClick = submit)
-                .padding(6.dp),
-        )
+                .clickable(enabled = query.isNotBlank(), role = Role.Button, onClick = submit),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Search,
+                contentDescription = stringResource(Res.string.search),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(32.dp).padding(6.dp),
+            )
+        }
         Spacer(Modifier.width(4.dp))
         Box(Modifier.weight(1f)) {
             if (query.isEmpty()) {
@@ -115,6 +123,8 @@ fun SearchField(
                     // must cut the hint short, not wrap it out of the pill.
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    // The hint is spoken as the field's name below, not as a separate text item.
+                    modifier = Modifier.clearAndSetSemantics {},
                 )
             }
             BasicTextField(
@@ -129,7 +139,8 @@ fun SearchField(
                 keyboardActions = KeyboardActions(onSearch = { submit() }),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    .semantics { contentDescription = placeholder },
             )
         }
         // Emptying the field is also how the recent searches are got back to,
@@ -137,9 +148,9 @@ fun SearchField(
         if (query.isNotEmpty()) {
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
-                    .clickable {
+                    .clickable(role = Role.Button) {
                         onQueryChange("")
                         // Clearing is an edit, not a dismissal: leave the user
                         // ready to immediately type their next search.

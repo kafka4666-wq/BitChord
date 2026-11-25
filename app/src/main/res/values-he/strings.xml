@@ -1570,6 +1570,12 @@
     <string name="home_recents_compact_subtitle">הצגת רצועות שהושמעו לאחרונה בשורות קומפקטיות במקום בכרטיסים</string>
     <string name="hide_trending_home">הסתרת מגמות במסך הבית</string>
     <string name="user_playlists_at_top_home">הצגת הפלייליסטים שלך בראש מסך הבית</string>
+    <string name="reorder_home_shelves">שינוי סדר המדפים בדף הבית</string>
+    <string name="reorder_home_shelves_subtitle">סידור המדפים הזמינים כרגע בדף הבית</string>
+    <string name="restore_home_defaults">שחזור ברירות המחדל של דף הבית</string>
+    <string name="move_home_shelf_up">העברת מדף למעלה</string>
+    <string name="move_home_shelf_down">העברת מדף למטה</string>
     <string name="initial_tab">הכרטיסייה הראשונית</string>
     <string name="initial_tab_footer">בחרו איזו כרטיסייה ראשית תיפתח עם הפעלת BitChord. לאחר ההפעלה תוכלו לעבור בין כרטיסיות כרגיל.</string>
+    <string name="replay_archive">ארכיון Replay</string>
 </resources>

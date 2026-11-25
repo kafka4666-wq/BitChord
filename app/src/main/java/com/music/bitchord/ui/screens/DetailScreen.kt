@@ -1,7 +1,11 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.ui.components.trackArtSize
+import android.content.ContentObserver
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import com.music.bitchord.R
 
 import androidx.compose.animation.AnimatedContent
@@ -69,10 +73,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -101,6 +107,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -122,13 +129,16 @@ import coil3.request.ImageRequest
 import coil3.request.transformations
 import androidx.compose.runtime.mutableIntStateOf
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
 import com.music.bitchord.data.LocalGroups
+import com.music.bitchord.data.LocalMediaRepository
 import com.music.bitchord.data.OfflinePlaylists
-import com.music.bitchord.data.matchesSearch
+import com.music.bitchord.data.SmartLocalPlaylists
+import com.music.bitchord.data.localSongSearchMatcher
 import com.music.bitchord.data.sortedForLibrary
 import com.music.bitchord.data.useTrackTags
 import com.music.bitchord.ui.components.CoverPlaceholder
@@ -160,6 +170,7 @@ import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.model.playingRowMatcher
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.stats.ListeningStats
 import com.music.bitchord.ui.components.DownloadedBadge
 import com.music.bitchord.ui.components.ExplicitSongTitle
 import com.music.bitchord.ui.components.LIBRARY_GRID_SPACING
@@ -371,7 +382,35 @@ fun DetailScreen(
      */
     reorder: (@Composable (ArtworkPalette) -> Unit)? = null,
 ) {
-    val rawSongs = (page.songs as? UiState.Success)?.data.orEmpty()
+    val context = LocalContext.current
+    val localRefreshScope = rememberCoroutineScope()
+    var observedLocalSongs by remember(page.browseId) { mutableStateOf<List<Song>?>(null) }
+    LaunchedEffect(page.browseId, page.songs) { observedLocalSongs = null }
+    DisposableEffect(page.browseId, context) {
+        if (page.browseId != "local:all") return@DisposableEffect onDispose {}
+        val handler = Handler(Looper.getMainLooper())
+        val refresh = Runnable {
+            localRefreshScope.launch {
+                observedLocalSongs = runCatching { LocalMediaRepository.getLocalMusic(context) }.getOrNull()
+            }
+        }
+        val observer = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) {
+                handler.removeCallbacks(refresh)
+                handler.postDelayed(refresh, 250L)
+            }
+        }
+        context.contentResolver.registerContentObserver(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            true,
+            observer,
+        )
+        onDispose {
+            handler.removeCallbacks(refresh)
+            context.contentResolver.unregisterContentObserver(observer)
+        }
+    }
+    val rawSongs = observedLocalSongs ?: (page.songs as? UiState.Success)?.data.orEmpty()
     // A folder keeps its own sort — the one its top bar menu sets — rather
     // than the per-page one a release takes.
     val folderSort = folder?.sort
@@ -474,8 +513,24 @@ fun DetailScreen(
     // Back before the search does: it is registered after it, so it is asked
     // first while it is on.
     val folderState = folder?.state
+    val localPlayRevision by ListeningStats.playRevision.collectAsStateWithLifecycle()
+    val localHistoryRevision by ListeningStats.historyRevision.collectAsStateWithLifecycle()
+    val localPeerRevision by ListeningStats.peerRevision.collectAsStateWithLifecycle()
+    var localPlayCounts by remember(page.browseId) { mutableStateOf(emptyMap<String, Int>()) }
+    LaunchedEffect(page.browseId, rawSongs, localPlayRevision, localHistoryRevision, localPeerRevision) {
+        if (page.browseId != "local:all") {
+            localPlayCounts = emptyMap()
+            return@LaunchedEffect
+        }
+        // Collapse bursty native/history updates into one lifetime aggregation.
+        delay(200)
+        localPlayCounts = ListeningStats.playCountsFor(rawSongs.mapTo(HashSet()) { it.videoId })
+    }
+    val smartCollections = remember(page.browseId, rawSongs, localPlayCounts) {
+        if (page.browseId == "local:all") SmartLocalPlaylists.derive(rawSongs, localPlayCounts) else emptyList()
+    }
     val folderGroups = if (folder != null && folderState != null) {
-        rememberLocalFolderGroups(page.browseId, folder, folderState.tab, rawSongs, query)
+        rememberLocalFolderGroups(page.browseId, folder, folderState.tab, rawSongs, query, smartCollections)
     } else {
         emptyList()
     }
@@ -1332,7 +1387,8 @@ internal fun List<Song>.sortedForDetail(sort: SongSort): List<Song> = when (sort
 internal fun List<Song>.matching(query: String): List<IndexedValue<Song>> {
     val all = withIndex().toList()
     if (query.isBlank()) return all
-    return all.filter { (_, song) -> song.matchesSearch(query) }
+    val matches = localSongSearchMatcher(query)
+    return all.filter { (_, song) -> matches(song) }
 }
 
 /**

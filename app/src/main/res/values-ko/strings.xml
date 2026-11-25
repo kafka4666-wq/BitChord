@@ -1414,6 +1414,12 @@
     <string name="home_recents_compact_subtitle">최근 재생한 트랙을 카드 대신 간결한 행으로 표시</string>
     <string name="hide_trending_home">홈에서 인기 항목 숨기기</string>
     <string name="user_playlists_at_top_home">내 재생목록을 홈 맨 위에 표시</string>
+    <string name="reorder_home_shelves">홈 선반 순서 변경</string>
+    <string name="reorder_home_shelves_subtitle">현재 홈에서 사용할 수 있는 선반의 순서를 정합니다</string>
+    <string name="restore_home_defaults">홈 기본값 복원</string>
+    <string name="move_home_shelf_up">선반 위로 이동</string>
+    <string name="move_home_shelf_down">선반 아래로 이동</string>
     <string name="initial_tab">초기 탭</string>
     <string name="initial_tab_footer">BitChord를 실행할 때 열릴 기본 탭을 선택하세요. 실행 후에는 평소처럼 탭을 전환할 수 있습니다.</string>
+    <string name="replay_archive">Replay 보관함</string>
 </resources>
