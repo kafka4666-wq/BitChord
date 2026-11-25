@@ -336,6 +336,8 @@ fun AccountAndScrobblingScreen(
             }
         }
 
+        HistoryImportSection(lastFmUsername = lastfmUsername)
+
         Spacer(Modifier.height(24.dp))
     }
 }

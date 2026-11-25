@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.get
 import io.ktor.client.request.forms.FormDataContent
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -14,6 +15,12 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.net.URI
 import java.security.MessageDigest
 import java.util.Locale
@@ -39,6 +46,21 @@ object LastFM {
         val apiKey: String,
         val secret: String,
         val sessionKey: String?,
+    )
+
+    data class RecentTrack(
+        val artist: String,
+        val title: String,
+        val album: String?,
+        val timestampSeconds: Long,
+    )
+
+    data class RecentTracksPage(
+        val tracks: List<RecentTrack>,
+        val page: Int,
+        val totalPages: Int,
+        val total: Long?,
+        val skipped: Int = 0,
     )
 
     @Volatile
@@ -140,6 +162,83 @@ object LastFM {
             method = "auth.getMobileSession",
             extra = mapOf("username" to username, "password" to password),
         )
+    }
+
+    /** Reads a public user's scrobble history; Last.fm documents this method as not requiring a session. */
+    suspend fun getRecentTracks(
+        username: String,
+        page: Int,
+        limit: Int = 200,
+        fromSeconds: Long? = null,
+        toSeconds: Long? = null,
+    ): RecentTracksPage {
+        require(username.isNotBlank()) { "A Last.fm username is required" }
+        require(page >= 1) { "Last.fm pages start at one" }
+        require(limit in 1..200) { "Last.fm allows at most 200 recent tracks per page" }
+        val config = runtimeConfig
+        require(config.apiKey.isNotBlank()) { "Last.fm API key is not configured for this build" }
+        require(config.endpoint == DEFAULT_API_ENDPOINT) { "History import is supported for Last.fm, not this custom API endpoint" }
+
+        val response = client.get(config.endpoint) {
+            headers.append(HttpHeaders.UserAgent, "BitChord (https://github.com/kushagrasinghx/BitChord)")
+            url {
+                parameters.append("method", "user.getRecentTracks")
+                parameters.append("user", username)
+                parameters.append("api_key", config.apiKey)
+                parameters.append("format", "json")
+                parameters.append("page", page.toString())
+                parameters.append("limit", limit.toString())
+                fromSeconds?.let { parameters.append("from", it.toString()) }
+                toSeconds?.let { parameters.append("to", it.toString()) }
+            }
+        }
+        val body = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw LastFmException(response.status.value, response.status.description)
+        }
+        val root = runCatching { json.parseToJsonElement(body).jsonObject }
+            .getOrElse { throw LastFmException(8, "Last.fm returned an unreadable history response") }
+        root["error"]?.let { errorElement ->
+            val code = (errorElement as? JsonPrimitive)?.contentOrNull?.toIntOrNull() ?: 8
+            val message = root["message"]?.let { (it as? JsonPrimitive)?.contentOrNull }
+                ?: "Last.fm could not return this listening history"
+            throw LastFmException(code, message)
+        }
+        val recent = root["recenttracks"] as? JsonObject
+            ?: throw LastFmException(8, "Last.fm returned no recent-track history")
+        val attrs = recent["@attr"] as? JsonObject
+        val actualPage = attrs?.string("page")?.toIntOrNull() ?: page
+        val totalPages = attrs?.string("totalPages")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+        val total = attrs?.string("total")?.toLongOrNull()
+        val tracksElement = recent["track"]
+        val trackObjects = when (tracksElement) {
+            is JsonArray -> tracksElement.mapNotNull { it as? JsonObject }
+            is JsonObject -> listOf(tracksElement)
+            else -> emptyList()
+        }
+        val tracks = trackObjects.mapNotNull { item ->
+            val nowPlaying = (item["@attr"] as? JsonObject)?.string("nowplaying") == "true"
+            if (nowPlaying) return@mapNotNull null
+            val artist = item["artist"].textOrNestedText()?.trim().orEmpty()
+            val title = item["name"].textOrNestedText()?.trim().orEmpty()
+            val timestamp = (item["date"] as? JsonObject)?.string("uts")?.toLongOrNull()
+            if (artist.isBlank() || title.isBlank() || timestamp == null || timestamp < 0L) return@mapNotNull null
+            RecentTrack(
+                artist = artist,
+                title = title,
+                album = item["album"].textOrNestedText()?.trim()?.ifBlank { null },
+                timestampSeconds = timestamp,
+            )
+        }
+        return RecentTracksPage(tracks, actualPage, totalPages, total, (trackObjects.size - tracks.size).coerceAtLeast(0))
+    }
+
+    private fun JsonObject.string(key: String): String? = this[key]?.let { (it as? JsonPrimitive)?.contentOrNull }
+
+    private fun kotlinx.serialization.json.JsonElement?.textOrNestedText(): String? = when (this) {
+        is JsonPrimitive -> contentOrNull
+        is JsonObject -> this["#text"]?.let { (it as? JsonPrimitive)?.contentOrNull }
+        else -> null
     }
 
     class LastFmException(

@@ -383,6 +383,8 @@
     <string name="app_icon_pixel_neon_silver" translatable="false">Pixel Neon Silver</string>
     <string name="app_icon_pixel_neon_cyan" translatable="false">Pixel Neon Cyan</string>
     <string name="app_icon_pixel_neon_violet" translatable="false">Pixel Neon Violet</string>
+    <string name="app_icon_vinyl_record" translatable="false">Vinyl Record</string>
+    <string name="app_icon_faceted_prism" translatable="false">Faceted Prism</string>
     <string name="theme">Theme</string>
     <string name="font">Font</string>
     <string name="font_default">Default</string>

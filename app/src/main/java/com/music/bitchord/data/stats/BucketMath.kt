@@ -51,6 +51,7 @@ object BucketMath {
             trackDays = addDayMaps(a.trackDays, b.trackDays),
             artistDays = addDayMaps(a.artistDays, b.artistDays),
             albumDays = addDayMaps(a.albumDays, b.albumDays),
+            importedEvents = (a.importedEvents + b.importedEvents).distinctBy { it.eventId },
         )
     }
 
@@ -89,12 +90,16 @@ object BucketMath {
             trackDays = a.trackDays?.let { subtractDays(it.toMutableMap(), b.trackDays.orEmpty()) },
             artistDays = a.artistDays?.let { subtractDays(it.toMutableMap(), b.artistDays.orEmpty()) },
             albumDays = a.albumDays?.let { subtractDays(it.toMutableMap(), b.albumDays.orEmpty()) },
+            importedEvents = a.importedEvents.filterNot { event ->
+                b.importedEvents.any { it.eventId == event.eventId }
+            },
         )
     }
 
     /** Whether [bucket] holds no listening at all. */
     fun isEmpty(bucket: StoredBucket): Boolean =
-        bucket.tracks.isEmpty() && bucket.hours.all { it == 0L } && bucket.days.values.all { it == 0L }
+        bucket.tracks.isEmpty() && bucket.hours.all { it == 0L } && bucket.days.values.all { it == 0L } &&
+            bucket.importedEvents.isEmpty()
 
     /**
      * The bytes a month is uploaded as, and hashed by. Compact, and in a fixed

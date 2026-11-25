@@ -101,7 +101,11 @@ fun rememberReplayState(active: Boolean, pageOpen: Boolean): Pair<ReplayState, (
         // a burst of lookups cancels each pending delay and only the last one
         // gets as far as a rebuild.
         // So do other devices' months, when a sync brings newer ones down.
-        merge(ArtistFacts.revision.drop(1), ListeningStats.peerRevision.drop(1)).collectLatest {
+        merge(
+            ArtistFacts.revision.drop(1),
+            ListeningStats.peerRevision.drop(1),
+            ListeningStats.historyRevision.drop(1),
+        ).collectLatest {
             delay(SETTLE_MILLIS)
             summary = ListeningStats.summary(period)
         }

@@ -2,6 +2,7 @@ package com.music.bitchord.data.stats
 
 import android.content.Context
 import android.util.Log
+import com.music.bitchord.data.history.ImportedListen
 import com.music.bitchord.data.model.Song
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -111,6 +112,7 @@ object ListeningStats {
 
     fun init(context: Context) {
         directory = File(context.filesDir, DIRECTORY)
+        ImportedHistoryStore.init(context)
         // Other devices' months, added in by [summary]; see PeerListening.
         PeerListening.init(context)
         // Opening a month means reading and parsing it, and the first thing to
@@ -341,8 +343,7 @@ object ListeningStats {
         // adding them is the whole of the merge. Own first so that where two
         // entries fold into one row (a local file, say), the id that survives
         // is one this phone can open.
-        fun monthBuckets(month: YearMonth): List<StoredBucket> =
-            listOfNotNull(read(month.toString())) + PeerListening.buckets(month.toString())
+        fun monthBuckets(month: YearMonth): List<StoredBucket> = replayBuckets(month)
         when {
             period.needsDayFilter() -> {
                 // Week may span two months: read both, filter by day.
@@ -415,18 +416,26 @@ object ListeningStats {
         ReplayYearData(year, summary, dayMs, monthTops, busiestDaySong)
     }
 
-    /** This device's copy of [month], then every other device's. See [summary]. */
-    private fun bucketsOf(month: YearMonth): List<StoredBucket> =
-        listOfNotNull(read(month.toString())) + PeerListening.buckets(month.toString())
+    /** This device's native totals and imported events, then every other device's. See [summary]. */
+    private fun bucketsOf(month: YearMonth): List<StoredBucket> = replayBuckets(month)
+
+    private fun replayBuckets(month: YearMonth): List<StoredBucket> {
+        val key = month.toString()
+        val imported = ImportedHistoryStore.readMonth(key)
+        return listOfNotNull(read(key)) +
+            listOfNotNull(imported.takeIf { it.isNotEmpty() }?.let { StoredBucket(month = key, importedEvents = it) }) +
+            PeerListening.buckets(key)
+    }
 
     /** Every month with a file, oldest first. */
     fun months(): List<YearMonth> {
         if (!ready) return emptyList()
-        val files = directory.listFiles() ?: return emptyList()
-        return files.mapNotNull { file ->
+        val files = directory.listFiles() ?: emptyArray()
+        val native = files.mapNotNull { file ->
             file.name.removeSuffix(".json").takeIf { it != file.name }
                 ?.let { runCatching { YearMonth.parse(it) }.getOrNull() }
-        }.sorted()
+        }
+        return (native + ImportedHistoryStore.months()).distinct().sorted()
     }
 
     /**
@@ -448,8 +457,13 @@ object ListeningStats {
 
     private val _peerRevision = MutableStateFlow(0)
 
+    private val _historyRevision = MutableStateFlow(0)
+
     /** Bumped by [peersChanged], for a page that should redraw when it does. */
     val peerRevision: StateFlow<Int> = _peerRevision.asStateFlow()
+
+    /** Bumped after a historical import or batch undo so an open Replay reloads. */
+    val historyRevision: StateFlow<Int> = _historyRevision.asStateFlow()
 
     private fun read(key: String): StoredBucket? {
         val file = File(directory, "$key.json")
@@ -470,10 +484,17 @@ object ListeningStats {
      * appear on any page this data exists to draw.
      */
     private fun prune() {
-        val existing = months()
-        if (existing.size > KEEP_MONTHS) {
-            existing.take(existing.size - KEEP_MONTHS).forEach {
-                File(directory, "$it.json").delete()
+        val nativeMonths = (directory.listFiles() ?: emptyArray()).mapNotNull { file ->
+            file.name.removeSuffix(".json").takeIf { it != file.name }
+                ?.let { runCatching { YearMonth.parse(it) }.getOrNull() }
+        }.distinct().sorted()
+        if (nativeMonths.size > KEEP_MONTHS) {
+            var remaining = nativeMonths.size - KEEP_MONTHS
+            nativeMonths.forEach { month ->
+                if (remaining > 0 && ImportedHistoryStore.readMonth(month.toString()).isEmpty()) {
+                    File(directory, "$month.json").delete()
+                    remaining--
+                }
             }
         }
         val bucket = open ?: return
@@ -521,7 +542,51 @@ object ListeningStats {
     suspend fun exportAll(): List<StoredBucket> {
         if (!ready) return emptyList()
         flushAndAwait()
-        return months().mapNotNull { read(it.toString()) }
+        return months().mapNotNull { month ->
+            val key = month.toString()
+            val native = read(key)
+            val imported = ImportedHistoryStore.readMonth(key)
+            if (native == null && imported.isEmpty()) null
+            else (native ?: StoredBucket(month = key)).copy(importedEvents = imported)
+        }
+    }
+
+    /** Append imported history; never calls playback recording or replaces a bucket. */
+    suspend fun importEvents(
+        events: List<ImportedListen>,
+        onProgress: (HistoryImportProgress) -> Unit = {},
+    ): ImportedAppendResult {
+        if (!ready) return ImportedAppendResult(0, events.size)
+        var persisted = 0
+        return try {
+            ImportedHistoryStore.append(events) { completed, total, imported ->
+                persisted = imported
+                onProgress(HistoryImportProgress(imported, completed, total))
+            }
+        } finally {
+            if (persisted > 0) {
+                version++
+                cached = null
+                _historyRevision.value++
+            }
+        }
+    }
+
+    /** Number of records in [events] that already exist in any imported source. */
+    suspend fun countImportedDuplicates(events: List<ImportedListen>): Int =
+        ImportedHistoryStore.duplicateCount(events)
+
+    fun hasImportedHistory(): Boolean = ImportedHistoryStore.months().isNotEmpty()
+
+    /** Remove only the most recently committed import batch. */
+    suspend fun removeLatestImportedBatch(): Int {
+        val removed = ImportedHistoryStore.removeLatestBatch()
+        if (removed > 0) {
+            version++
+            cached = null
+            _historyRevision.value++
+        }
+        return removed
     }
 
     /**
@@ -540,14 +605,16 @@ object ListeningStats {
             directory.mkdirs()
             version++
             cached = null
+            ImportedHistoryStore.replaceAll(buckets.flatMap { it.importedEvents })
             buckets.forEach { bucket ->
                 val key = runCatching { YearMonth.parse(bucket.month).toString() }.getOrNull()
                     ?: return@forEach
                 runCatching {
                     File(directory, "$key.json")
-                        .writeText(json.encodeToString(StoredBucket.serializer(), bucket))
+                        .writeText(json.encodeToString(StoredBucket.serializer(), bucket.copy(importedEvents = emptyList())))
                 }.onFailure { Log.w(TAG, "Could not import bucket $key", it) }
             }
+            _historyRevision.value++
         }
     }
 
@@ -622,7 +689,7 @@ object ListeningStats {
 
         fun add(bucket: StoredBucket) {
             bucket.tracks.forEach { entry ->
-                tracks.merge(mergeKey(entry), entry.copy()) { a, b -> a.also { it.absorb(b) } }
+                addTrack(entry)
             }
             bucket.artists.forEach { entry ->
                 val lead = entry.copy(name = primaryArtist(entry.name) ?: entry.name)
@@ -637,6 +704,7 @@ object ListeningStats {
                 val date = "${bucket.month}-%02d".format(day)
                 days[date] = (days[date] ?: 0L) + ms
             }
+            bucket.importedEvents.forEach { addImportedEvent(it) }
             if (earliest == null || bucket.month < earliest!!) earliest = bucket.month
         }
 
@@ -657,7 +725,7 @@ object ListeningStats {
         fun add(bucket: StoredBucket, range: Pair<LocalDate, LocalDate>) {
             // Merge entity-level data (tracks/artists/albums) so weekRange() can read them.
             bucket.tracks.forEach { entry ->
-                tracks.merge(mergeKey(entry), entry.copy()) { a, b -> a.also { it.absorb(b) } }
+                addTrack(entry)
             }
             bucket.artists.forEach { entry ->
                 val lead = entry.copy(name = primaryArtist(entry.name) ?: entry.name)
@@ -677,7 +745,79 @@ object ListeningStats {
                     days[candidate] = (days[candidate] ?: 0L) + ms
                 }
             }
+            bucket.importedEvents.forEach { addImportedEvent(it, range) }
         }
+
+        private fun addTrack(entry: TrackEntry) {
+            val matchingImport = tracks.entries.firstOrNull { (_, current) ->
+                current.id.startsWith("history:") && sameTrack(current.title, current.artist, entry.title, entry.artist)
+            }?.key
+            val key = matchingImport ?: mergeKey(entry)
+            tracks.merge(key, entry.copy(days = entry.days.mapValuesTo(mutableMapOf()) { it.value.copy() })) { current, addition ->
+                current.also { it.absorb(addition) }
+            }
+        }
+
+        private fun addImportedEvent(event: ImportedListen, range: Pair<LocalDate, LocalDate>? = null) {
+            val zone = runCatching { ZoneId.of(event.timeZoneId) }.getOrDefault(ZoneId.of("UTC"))
+            val at = Instant.ofEpochMilli(event.timestampMillis).atZone(zone)
+            val date = at.toLocalDate()
+            if (range != null && (date < range.first || date > range.second)) return
+            val dateKey = date.toString()
+            val listenedMs = event.listeningMillis?.coerceAtLeast(0L) ?: 0L
+            val importedTrack = TrackEntry(
+                id = event.trackId,
+                title = event.title,
+                artist = event.artist,
+                album = event.album,
+                ms = listenedMs,
+                plays = 1,
+                last = event.timestampMillis,
+                days = mutableMapOf(dateKey to DayStats(listenedMs, 1)),
+            )
+            val matchingTrack = tracks.entries.firstOrNull { (_, current) ->
+                sameTrack(current.title, current.artist, event.title, event.artist)
+            }?.key
+            tracks.merge(matchingTrack ?: mergeKey(importedTrack), importedTrack) { current, addition ->
+                current.also { it.absorb(addition) }
+            }
+
+            primaryArtist(event.artist)?.let { name ->
+                val entry = NameEntry(name = name, ms = listenedMs, plays = 1, days = mutableMapOf(dateKey to DayStats(listenedMs, 1)))
+                artists.merge(name.lowercase(Locale.ROOT), entry) { current, addition -> current.also { it.absorb(addition) } }
+                artistDays.merge(dateKey, DayStats(listenedMs, 1)) { current, addition ->
+                    current.apply { ms += addition.ms; plays += addition.plays }
+                }
+            }
+            event.album?.trim()?.takeIf { it.isNotEmpty() }?.let { name ->
+                val albumKey = albumKey(null, name, event.artist)
+                val entry = NameEntry(
+                    name = name,
+                    sub = event.artist,
+                    ms = listenedMs,
+                    plays = 1,
+                    days = mutableMapOf(dateKey to DayStats(listenedMs, 1)),
+                )
+                albums.merge(albumKey, entry) { current, addition -> current.also { it.absorb(addition) } }
+                albumDays.merge(dateKey, DayStats(listenedMs, 1)) { current, addition ->
+                    current.apply { ms += addition.ms; plays += addition.plays }
+                }
+            }
+            trackDays.merge(dateKey, DayStats(listenedMs, 1)) { current, addition ->
+                current.apply { ms += addition.ms; plays += addition.plays }
+            }
+            if (listenedMs > 0L) {
+                hours[at.hour] += listenedMs
+                days[dateKey] = (days[dateKey] ?: 0L) + listenedMs
+            }
+        }
+
+        private fun sameTrack(titleA: String, artistA: String, titleB: String, artistB: String): Boolean =
+            titleA.trim().equals(titleB.trim(), ignoreCase = true) &&
+                (primaryArtist(artistA) ?: artistA).trim().equals(
+                    (primaryArtist(artistB) ?: artistB).trim(),
+                    ignoreCase = true,
+                )
 
         fun toSummary(period: ReplayPeriod, today: LocalDate): ReplaySummary {
             // For weekly mode, compute per-entity totals from day-level sub-buckets.
@@ -687,7 +827,7 @@ object ListeningStats {
                 tracks.values
                     .mapNotNull { entry ->
                         val (ms, plays) = entry.weekRange(weekRange)
-                        if (ms > 0) entry to (ms to plays) else null
+                        if (ms > 0 || plays > 0) entry to (ms to plays) else null
                     }
                     .sortedWith(compareByDescending<Pair<TrackEntry, Pair<Long, Int>>> { it.second.first }
                         .thenByDescending { it.second.second })
@@ -737,7 +877,7 @@ object ListeningStats {
                 artists.values
                     .mapNotNull { entry ->
                         val (ms, plays) = entry.weekRange(weekRange)
-                        if (ms > 0) entry to (ms to plays) else null
+                        if (ms > 0 || plays > 0) entry to (ms to plays) else null
                     }
                     .sortedWith(compareByDescending<Pair<NameEntry, Pair<Long, Int>>> { it.second.first }
                         .thenByDescending { it.second.second })
@@ -772,7 +912,7 @@ object ListeningStats {
                 releases
                     .mapNotNull { entry ->
                         val (ms, plays) = entry.weekRange(weekRange)
-                        if (ms > 0) entry to (ms to plays) else null
+                        if (ms > 0 || plays > 0) entry to (ms to plays) else null
                     }
                     .sortedWith(compareByDescending<Pair<NameEntry, Pair<Long, Int>>> { it.second.first }
                         .thenByDescending { it.second.second })
@@ -982,7 +1122,7 @@ public data class DayStats(
 /** One track's totals inside a bucket. */
 @Serializable
 data class TrackEntry(
-    val id: String,
+    var id: String,
     val title: String = "",
     val artist: String = "",
     var album: String? = null,
@@ -999,6 +1139,7 @@ data class TrackEntry(
         ms += other.ms
         plays += other.plays
         last = maxOf(last, other.last)
+        if (id.startsWith("history:") && !other.id.startsWith("history:")) id = other.id
         if (album == null) album = other.album
         if (albumId == null) albumId = other.albumId
         if (artistId == null) artistId = other.artistId
@@ -1113,6 +1254,8 @@ data class StoredBucket(
     val artistDays: Map<String, DayStats>? = null,
     /** Per-day sub-buckets for albums. Key: "YYYY-MM-DD". */
     val albumDays: Map<String, DayStats>? = null,
+    /** Original imported records for backup/restore; imports are otherwise stored separately. */
+    val importedEvents: List<ImportedListen> = emptyList(),
 )
 
 /** A row on one of the four charts. */

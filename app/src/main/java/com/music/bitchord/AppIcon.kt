@@ -37,7 +37,9 @@ enum class AppIcon(val alias: String, val iconRes: Int, val labelRes: Int, val p
     SamsungNeonViolet("LauncherSamsungNeonViolet", R.mipmap.ic_samsung_neon_violet, R.string.app_icon_samsung_neon_violet, R.mipmap.ic_samsung_neon_violet_foreground),
     PixelNeonSilver("LauncherPixelNeonSilver", R.mipmap.ic_pixel_neon_silver, R.string.app_icon_pixel_neon_silver, R.mipmap.ic_pixel_neon_silver_foreground),
     PixelNeonCyan("LauncherPixelNeonCyan", R.mipmap.ic_pixel_neon_cyan, R.string.app_icon_pixel_neon_cyan, R.mipmap.ic_pixel_neon_cyan_foreground),
-    PixelNeonViolet("LauncherPixelNeonViolet", R.mipmap.ic_pixel_neon_violet, R.string.app_icon_pixel_neon_violet, R.mipmap.ic_pixel_neon_violet_foreground);
+    PixelNeonViolet("LauncherPixelNeonViolet", R.mipmap.ic_pixel_neon_violet, R.string.app_icon_pixel_neon_violet, R.mipmap.ic_pixel_neon_violet_foreground),
+    VinylRecord("LauncherVinylRecord", R.mipmap.ic_vinyl_record, R.string.app_icon_vinyl_record),
+    FacetedPrism("LauncherFacetedPrism", R.mipmap.ic_faceted_prism, R.string.app_icon_faceted_prism);
 
     private fun component(context: Context) =
         ComponentName(context.packageName, "com.music.bitchord.$alias")
